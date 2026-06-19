@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hosts — a native macOS /etc/hosts editor</title>
+  <meta name="description" content="A native macOS SwiftUI app for editing /etc/hosts. Switch whole environments with named schemes, preview a visual diff before every write, and unlock edits with Touch ID through a signed privileged helper. No browser UI, no Node, no npm." />
+  <meta property="og:title" content="Hosts — native macOS /etc/hosts editor" />
+  <meta property="og:description" content="One-click environment switching for /etc/hosts, visual diffs before every write, and Touch ID-gated privileged edits. Native SwiftUI. Free and open source." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="glow"></div>
+
+  <nav>
+    <div class="wrap">
+      <a class="brand" href="#top">
+        <img src="assets/logo.svg" alt="Hosts logo" />
+        Hosts
+      </a>
+      <div class="nav-links">
+        <a href="#demo">Demo</a>
+        <a href="#features">Features</a>
+        <a href="#security">Security</a>
+        <a href="#install">Install</a>
+        <a class="nav-cta" href="https://github.com/akar016012/hosts-app-macos" target="_blank" rel="noopener">View source</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="wrap">
+      <span class="badge"><span class="dot"></span> macOS · SwiftUI · Free &amp; open source</span>
+      <h1>Edit <span class="grad">/etc/hosts</span><br />the way it deserves.</h1>
+      <p class="sub">A native macOS app that turns hostname juggling into one-click environment switching — with a visual diff before every write and Touch&nbsp;ID-gated privileged edits.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#install">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+          Build from source
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/akar016012/hosts-app-macos" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.36 9.36 0 015 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.01 10.01 0 0022 12.25C22 6.58 17.52 2 12 2z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <div class="hero-meta">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> No browser UI</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> No Node or npm</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Reversible writes</span>
+      </div>
+
+      <!-- Real app window -->
+      <img class="shot shot-hero reveal" src="assets/app/hosts-window.png"
+           width="1720" height="1182" loading="lazy"
+           alt="The Hosts app window showing /etc/hosts entries grouped into System and Local Development, each row with an IP, hostname, and an enable toggle." />
+    </div>
+  </header>
+
+  <!-- Demo video -->
+  <section class="section" id="demo" style="padding-top: 40px;">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="eyebrow">See it in action</div>
+        <h2>A guided tour of the real app</h2>
+        <p>From first-run onboarding to schemes, visual diffs, DNS flush, Touch ID unlock, and the custom theme editor.</p>
+      </div>
+      <div class="demo-wrap reveal">
+        <div class="demo-glow"></div>
+        <div class="demo-frame">
+          <video
+            src="assets/video/hosts-tour.mp4"
+            poster="assets/video/hosts-tour-poster.png"
+            autoplay
+            muted
+            loop
+            playsinline
+            controls
+          ></video>
+        </div>
+        <div class="demo-cap">Recorded from Hosts running on macOS · Midnight theme</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="eyebrow">Everything in one window</div>
+        <h2>Stop hand-editing a root-owned text file</h2>
+        <p>Hosts gives <code>/etc/hosts</code> the structured, reversible, validated editor it never had.</p>
+      </div>
+      <div class="grid">
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg></div>
+          <h3>Named schemes</h3>
+          <p>Save whole environments — Local dev, Staging, QA, Blocklist — and switch between them in one click. Duplicate, tag, and annotate them as you go.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 3H5a2 2 0 00-2 2v4m0 6v4a2 2 0 002 2h4m6 0h4a2 2 0 002-2v-4m0-6V5a2 2 0 00-2-2h-4M8 12h8"/></svg></div>
+          <h3>Visual diff before write</h3>
+          <p>See exactly which lines change before applying any scheme. Every switch snapshots the previous file first, so it's always reversible.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M21 12a9 9 0 11-6.2-8.5"/><path d="M21 4v5h-5"/></svg></div>
+          <h3>Backups &amp; DNS flush</h3>
+          <p>A timestamped backup is written before every change, and a one-click button flushes the macOS DNS cache so edits take effect immediately.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg></div>
+          <h3>Toggle, don't delete</h3>
+          <p>Flip any entry on or off without losing it — disabled lines stay in the file, commented out. IP and hostname validation catches typos before they land.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+          <h3>Search &amp; duplicate detection</h3>
+          <p>Filter by IP, hostname, or comment. Hosts flags any hostname that maps to more than one IP so conflicts never silently win.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 12a9 9 0 109-9 9 9 0 00-9 9z"/><path d="M3 12H1m11-9V1m9 11h2m-9 9v2"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <h3>History &amp; undo</h3>
+          <p>One-click revert to any earlier snapshot, Undo Last Change with ⌥⌘Z, automatic timestamped backups before every write, and a Flush DNS button.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Diff / schemes spotlight -->
+  <section class="section" id="diff">
+    <div class="wrap">
+      <div class="split">
+        <div class="reveal">
+          <h2>Know what changes <br />before it changes.</h2>
+          <p>Applying a scheme isn't a blind overwrite. Hosts shows a line-by-line diff of the exact additions and removals, optionally flushes the DNS cache, and snapshots the current file first.</p>
+          <ul class="checks">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span><b>Reversible by design</b> — every apply is a restorable point in History.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span><b>Optional DNS flush</b> after apply, right from the same sheet.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span><b>Read-only raw preview</b> of the computed file, copyable to clipboard.</span></li>
+          </ul>
+        </div>
+        <img class="shot reveal" src="assets/app/hosts-diff.png"
+             width="1720" height="1184" loading="lazy"
+             alt="Hosts' Apply sheet showing a line-by-line diff before writing to /etc/hosts — one line added, zero removed, above the unchanged context lines, with a 'Flush DNS cache after applying' option." />
+      </div>
+    </div>
+  </section>
+
+  <!-- Security -->
+  <section class="section" id="security">
+    <div class="wrap">
+      <div class="split">
+        <img class="shot reveal" src="assets/app/hosts-unlock.png"
+             width="1720" height="1190" loading="lazy"
+             alt="A macOS Touch ID prompt over the Hosts window reading 'Hosts is trying to unlock Hosts for this session.'" />
+        <div class="reveal">
+          <h2>Root access, on a short leash.</h2>
+          <p>Writing <code>/etc/hosts</code> needs privilege — so Hosts does it through a signed <code>LaunchDaemon</code> helper registered with <code>SMAppService</code>, never by shelling out with sudo.</p>
+          <ul class="checks">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span><b>ECDSA-signed requests</b> from a session key unlocked by Touch ID or an app PIN.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span><b>Replay protection</b> — timestamps plus a persisted nonce set reject reused requests.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span><b>Hardened writes</b> — symlink-safe atomic replace, size caps, control-character rejection.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span><b>Brute-force lockout</b> that escalates after repeated wrong PIN attempts.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Themes -->
+  <section class="section">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="eyebrow">Make it yours</div>
+        <h2>Eleven built-in themes, plus a custom editor</h2>
+        <p>Per-token color overrides with live WCAG-contrast tuning, so every theme stays legible. <b>Click any swatch to recolor this page</b> — the same palettes ship in the app.</p>
+      </div>
+      <div class="themes reveal" role="group" aria-label="Preview a theme on this page">
+        <button class="swatch" type="button" data-theme="midnight" aria-pressed="true"><span class="chip" style="background:#0a0e1a"><span class="dot" style="background:#5b8cff"></span></span><span>Midnight</span></button>
+        <button class="swatch" type="button" data-theme="graphite" aria-pressed="false"><span class="chip" style="background:#15181d"><span class="dot" style="background:#8ea6c9"></span></span><span>Graphite</span></button>
+        <button class="swatch" type="button" data-theme="carbon" aria-pressed="false"><span class="chip" style="background:#08090a"><span class="dot" style="background:#34d399"></span></span><span>Carbon</span></button>
+        <button class="swatch" type="button" data-theme="plum" aria-pressed="false"><span class="chip" style="background:#120e1c"><span class="dot" style="background:#a78bfa"></span></span><span>Plum</span></button>
+        <button class="swatch" type="button" data-theme="daylight" aria-pressed="false"><span class="chip" style="background:#f4f6fb"><span class="dot" style="background:#3a6df0"></span></span><span>Daylight</span></button>
+        <button class="swatch" type="button" data-theme="aurora" aria-pressed="false"><span class="chip" style="background:#07111a"><span class="dot" style="background:#2dd4bf"></span></span><span>Aurora</span></button>
+        <button class="swatch" type="button" data-theme="crimson" aria-pressed="false"><span class="chip" style="background:#0f0509"><span class="dot" style="background:#f43f5e"></span></span><span>Crimson</span></button>
+        <button class="swatch" type="button" data-theme="ocean" aria-pressed="false"><span class="chip" style="background:#040c1a"><span class="dot" style="background:#38bdf8"></span></span><span>Ocean</span></button>
+        <button class="swatch" type="button" data-theme="ember" aria-pressed="false"><span class="chip" style="background:#110905"><span class="dot" style="background:#fb923c"></span></span><span>Ember</span></button>
+        <button class="swatch" type="button" data-theme="forest" aria-pressed="false"><span class="chip" style="background:#040a04"><span class="dot" style="background:#4ade80"></span></span><span>Forest</span></button>
+        <button class="swatch" type="button" data-theme="latte" aria-pressed="false"><span class="chip" style="background:#fdf6eb"><span class="dot" style="background:#b45309"></span></span><span>Latte</span></button>
+      </div>
+      <p class="theme-hint reveal">Pick a theme above — your choice is remembered on this device.</p>
+      <div class="shot-wrap reveal">
+        <img class="shot" src="assets/app/hosts-theme-editor.png"
+             width="1720" height="1196" loading="lazy"
+             alt="Hosts' custom theme editor: a live preview at the top, a base preset and seed accent, and per-token color overrides for surfaces, rows, text, and accents." />
+        <div class="shot-cap">The built-in custom theme editor — override any token, with live contrast feedback.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section class="section" id="install">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <div class="eyebrow">About five minutes</div>
+        <h2>Build it locally, signed with your own Apple ID</h2>
+        <p>Distributed as source — you sign it with your <b>own</b> free signing certificate so the privileged helper can register. Any free Apple ID works (no paid Developer Program), and because you build it locally there's no Gatekeeper "unidentified developer" wall. Requires <b>Xcode</b> (free) once to create the certificate.</p>
+      </div>
+      <div class="dmg-soon reveal" role="note">
+        <div class="dmg-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg></div>
+        <div class="dmg-text">
+          <h3>Prefer a one-click install? A signed <code>.dmg</code> is coming soon.</h3>
+          <p>A notarized disk image for drag-and-drop installation — no Xcode, no certificate, no build step. For now, build from source below.</p>
+        </div>
+        <span class="dmg-tag">Coming soon</span>
+      </div>
+      <div class="steps">
+        <div class="step reveal"><div class="num">1</div><h3>Create a free certificate</h3><p>In <b>Xcode → Settings → Accounts</b>, sign in with any Apple ID to provision a free <b>Apple Development</b> certificate. No paid Developer Program needed.</p></div>
+        <div class="step reveal"><div class="num">2</div><h3>Add your identity</h3><p>Copy your identity from <code>security find-identity</code> into a <code>native/.signid</code> file. It's git-ignored, so it's never committed — the build signs with it.</p></div>
+        <div class="step reveal"><div class="num">3</div><h3>Build &amp; unlock</h3><p>Run <code>./build.sh</code> to compile and sign the app and helper, then open it and enable the helper once in Login Items.</p></div>
+      </div>
+      <div class="code reveal"><span class="c"># 1. get the source</span>
+git clone https://github.com/akar016012/hosts-app-macos.git
+cd hosts-app-macos/native
+<span class="c"># 2. tell the build your signing identity (copy the "Apple Development: …" string)</span>
+security find-identity -v -p codesigning
+<span class="p">echo</span> <span class="s">'Apple Development: you@example.com (TEAMID)'</span> &gt; .signid
+<span class="c"># 3. build (signs with your identity) &amp; run</span>
+<span class="p">./build.sh</span>   <span class="c"># → creates native/HostsEditor.app</span>
+open HostsEditor.app</div>
+      <p class="code-more"><a href="https://github.com/akar016012/hosts-app-macos/blob/main/docs/build-from-source.md" target="_blank" rel="noopener">Full build &amp; signing guide →</a></p>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="section">
+    <div class="wrap">
+      <div class="final reveal">
+        <img src="assets/logo.svg" alt="" style="width:64px;height:64px;border-radius:16px;margin:0 auto 24px" />
+        <h2>Give /etc/hosts a real editor.</h2>
+        <p>Native SwiftUI. No web server, no browser UI, no npm. Free and open source under the AGPLv3.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/akar016012/hosts-app-macos" target="_blank" rel="noopener">Get the source</a>
+          <a class="btn btn-ghost" href="#features">Explore features</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <a class="brand" href="#top"><img src="assets/logo.svg" alt="Hosts logo" style="width:26px;height:26px;border-radius:7px" /> Hosts</a>
+      <div class="links">
+        <a href="https://github.com/akar016012/hosts-app-macos" target="_blank" rel="noopener">GitHub</a>
+        <a href="#features">Features</a>
+        <a href="#security">Security</a>
+        <a href="#install">Install</a>
+      </div>
+      <div class="legal">© 2026 Aditya Kar · Free and open source under the AGPLv3. Hosts and its logo are trademarks. Built with SwiftUI for macOS.</div>
+    </div>
+  </footer>
+
+  <script>
+    // Scroll reveal
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+    // ---- Theme switcher ----
+    // The same palettes that ship in the app (native/UI/Theme.swift). Structural
+    // tokens are verbatim; textDim/textMut and the semantic colors are run through
+    // the app's WCAG contrast-tuning so every theme stays legible on its own bg.
+    const THEMES = {
+      midnight: { light:false, bg:'0a0e1a', surface:'131a2b', surface2:'0e1422', border:'1e2840', row:'111827', rowBorder:'1b2336', text:'e7ecf5', text2:'aab4c8', textDim:'6b7689', textMut:'495468', accent:'5b8cff', accent2:'7aa2ff' },
+      graphite: { light:false, bg:'15181d', surface:'1d2128', surface2:'181c22', border:'2a3039', row:'1b1f26', rowBorder:'272d36', text:'e9ebee', text2:'b0b6c0', textDim:'727885', textMut:'525863', accent:'8ea6c9', accent2:'a8bcd9' },
+      carbon:   { light:false, bg:'08090a', surface:'101314', surface2:'0c0e0f', border:'1e2223', row:'0f1112', rowBorder:'1a1f20', text:'e6eae8', text2:'a4b0aa', textDim:'69736d', textMut:'49514c', accent:'34d399', accent2:'5fe0ad' },
+      plum:     { light:false, bg:'120e1c', surface:'1b1428', surface2:'150f20', border:'2b2239', row:'181024', rowBorder:'271d35', text:'ece7f5', text2:'b6aacb', textDim:'7a6e90', textMut:'564b6a', accent:'a78bfa', accent2:'bfa6ff' },
+      daylight: { light:true,  bg:'f4f6fb', surface:'ffffff', surface2:'eef1f7', border:'d9dfea', row:'ffffff', rowBorder:'e3e8f1', text:'1a2233', text2:'4a5568', textDim:'7a8699', textMut:'9aa4b4', accent:'3a6df0', accent2:'2f5fe0' },
+      aurora:   { light:false, bg:'07111a', surface:'0d1e25', surface2:'091519', border:'172e35', row:'0c1b22', rowBorder:'14272f', text:'dff4f1', text2:'8db8b3', textDim:'567870', textMut:'3a5550', accent:'2dd4bf', accent2:'5ee8d6' },
+      crimson:  { light:false, bg:'0f0509', surface:'1e0c12', surface2:'17080e', border:'30131c', row:'1b0b10', rowBorder:'2a1018', text:'f5dde3', text2:'c4939d', textDim:'89626c', textMut:'573d44', accent:'f43f5e', accent2:'fb7185' },
+      ocean:    { light:false, bg:'040c1a', surface:'0a1628', surface2:'071020', border:'10243d', row:'091424', rowBorder:'0e2037', text:'daf1fd', text2:'8bbedd', textDim:'4e7ea0', textMut:'325470', accent:'38bdf8', accent2:'7dd3fc' },
+      ember:    { light:false, bg:'110905', surface:'1e1008', surface2:'180d06', border:'321a0c', row:'1c0e07', rowBorder:'2b1709', text:'faebd7', text2:'c49a72', textDim:'8b6742', textMut:'55402a', accent:'fb923c', accent2:'fdba74' },
+      forest:   { light:false, bg:'040a04', surface:'0a150a', surface2:'081008', border:'142414', row:'091209', rowBorder:'111f11', text:'d4f4d4', text2:'86b886', textDim:'4a724a', textMut:'344f34', accent:'4ade80', accent2:'86efac' },
+      latte:    { light:true,  bg:'fdf6eb', surface:'fff8f0', surface2:'f7eddc', border:'e8d5b0', row:'fffaf4', rowBorder:'ead8b8', text:'1c1208', text2:'5c4425', textDim:'8c6e48', textMut:'b8956a', accent:'b45309', accent2:'a84e08' },
+    };
+
+    const hexToRgb = (h) => { h = h.replace('#',''); return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]; };
+    const rgbToHex = ([r,g,b]) => [r,g,b].map(v => Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');
+    const lum = (hex) => { const f = (v) => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); }; const [r,g,b] = hexToRgb(hex); return 0.2126*f(r)+0.7152*f(g)+0.0722*f(b); };
+    const ratio = (l1,l2) => (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
+    const contrast = (a,b) => ratio(lum(a), lum(b));
+    function rgbToHsv([r,g,b]){ r/=255;g/=255;b/=255; const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn; let h=0; if(d){ if(mx===r)h=((g-b)/d)%6; else if(mx===g)h=(b-r)/d+2; else h=(r-g)/d+4; h*=60; if(h<0)h+=360; } return [h, mx?d/mx:0, mx]; }
+    function hsvToRgb([h,s,v]){ const c=v*s, x=c*(1-Math.abs((h/60)%2-1)), m=v-c; let r=0,g=0,b=0; if(h<60){r=c;g=x;} else if(h<120){r=x;g=c;} else if(h<180){g=c;b=x;} else if(h<240){g=x;b=c;} else if(h<300){r=x;b=c;} else {r=c;b=x;} return [(r+m)*255,(g+m)*255,(b+m)*255]; }
+    // Nudge brightness (preserving hue/sat) until the color clears `target` vs bg.
+    function contrastSafe(hex, bgHex, target=4.5){
+      const bgL = lum(bgHex), lighten = bgL < 0.5;
+      let [h,s,v] = rgbToHsv(hexToRgb(hex)), cur = hex, i = 0;
+      while (contrast(cur, bgHex) < target && i < 40){
+        v += lighten ? 0.03 : -0.03;
+        if (v <= 0 || v >= 1) break;
+        cur = rgbToHex(hsvToRgb([h,s,v])); i++;
+      }
+      return cur;
+    }
+    // Black or white text — whichever reads better across accent → accent2.
+    function onAccent(accent, accent2){
+      const worst = (fg) => Math.min(contrast(fg, accent), contrast(fg, accent2));
+      return worst('ffffff') >= worst('0b0f14') ? 'ffffff' : '0b0f14';
+    }
+
+    function applyTheme(name, persist=true){
+      const t = THEMES[name]; if (!t) return;
+      const set = (k,v) => document.documentElement.style.setProperty(k, '#'+v);
+      set('--bg',t.bg); set('--surface',t.surface); set('--surface2',t.surface2); set('--border',t.border);
+      set('--row',t.row); set('--rowBorder',t.rowBorder);
+      set('--text',t.text); set('--text2',t.text2);
+      set('--textDim', contrastSafe(t.textDim, t.bg, 4.5));
+      set('--textMut', contrastSafe(t.textMut, t.bg, 4.5));
+      set('--accent',t.accent); set('--accent2', contrastSafe(t.accent2, t.bg, t.light ? 4.5 : 3));
+      set('--onAccent', onAccent(t.accent, t.accent2));
+      set('--green', contrastSafe(t.light ? '0f9d6b' : '34d399', t.bg));
+      set('--red',   contrastSafe(t.light ? 'dc2626' : 'f87171', t.bg));
+      set('--amber', contrastSafe(t.light ? 'd97706' : 'f5b54a', t.bg));
+      const [r,g,b] = hexToRgb(t.bg);
+      document.documentElement.style.setProperty('--headerBg', `rgba(${r}, ${g}, ${b}, 0.72)`);
+      document.documentElement.style.colorScheme = t.light ? 'light' : 'dark';
+      document.querySelectorAll('.swatch').forEach((s) => s.setAttribute('aria-pressed', String(s.dataset.theme === name)));
+      if (persist) { try { localStorage.setItem('hosts.web.theme', name); } catch (e) {} }
+    }
+
+    document.querySelectorAll('.swatch').forEach((btn) =>
+      btn.addEventListener('click', () => applyTheme(btn.dataset.theme)));
+
+    let saved = 'midnight';
+    try { const s = localStorage.getItem('hosts.web.theme'); if (s && THEMES[s]) saved = s; } catch (e) {}
+    applyTheme(saved, false);
+  </script>
+</body>
+</html>
