@@ -246,7 +246,7 @@ struct ContentView: View {
                 Label("\(store.duplicateCount) duplicate \(store.duplicateCount == 1 ? "host" : "hosts")",
                       systemImage: "exclamationmark.triangle.fill")
                     .foregroundColor(Theme.amber)
-                    .help("A hostname appears in more than one enabled entry for the same IP version (IPv4/IPv6); macOS system defaults are ignored. Only the first match wins.")
+.help("A hostname appears in more than one enabled entry for the same IP version (IPv4/IPv6). Distinct macOS default entries (e.g. `localhost`) are ignored, but repeats or user entries still warn. Only the first match wins.")
             }
             Spacer()
         }
