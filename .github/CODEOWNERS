@@ -1,0 +1,4 @@
+# Every change requires review from the repo owner. Combined with the branch
+# ruleset's "require code owner review", this makes @akar016012's approval the
+# gate for merging any contributor pull request.
+* @akar016012
