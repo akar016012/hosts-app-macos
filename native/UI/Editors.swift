@@ -59,7 +59,9 @@ struct EntryEditor: View {
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }.buttonStyle(SoftButton())
+                    .keyboardShortcut(.cancelAction)
                 Button("Save") { save() }.buttonStyle(PrimaryButton())
+                    .keyboardShortcut(.defaultAction)
             }
         }
         .padding(24).frame(width: 470).background(Theme.surface)
@@ -129,6 +131,7 @@ struct RawEditor: View {
             HStack {
                 Spacer()
                 Button("Close") { dismiss() }.buttonStyle(PrimaryButton())
+                    .keyboardShortcut(.cancelAction)
             }
         }
         .padding(24).frame(width: 700, height: 540).background(Theme.surface)

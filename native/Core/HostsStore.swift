@@ -4,18 +4,39 @@ import SwiftUI
 
 // MARK: - Store
 
+// How the Locked pill behaves when clicked: ask each time, or jump straight to a
+// preferred method. Persisted in UserDefaults.
+enum UnlockMethod: String, CaseIterable {
+    case ask, touchID, pin
+    var label: String {
+        switch self {
+        case .ask: return "Ask each time"
+        case .touchID: return "Touch ID"
+        case .pin: return "PIN"
+        }
+    }
+}
+
 @MainActor
 final class HostsStore: ObservableObject {
+    static let defaultUnlockKey = "defaultUnlock"
+
     @Published var lines: [HostLine] = []
     @Published var rawText: String = ""
     @Published var helperReady = false
     @Published var sessionUnlocked = false
     @Published var isPreparing = false
+    @Published var pinSet = PinStore.isSet
+    @Published var defaultUnlock: UnlockMethod =
+        UnlockMethod(rawValue: UserDefaults.standard.string(forKey: HostsStore.defaultUnlockKey) ?? "") ?? .ask {
+        didSet { UserDefaults.standard.set(defaultUnlock.rawValue, forKey: HostsStore.defaultUnlockKey) }
+    }
     @Published var toast: (msg: String, kind: ToastKind)? = nil
     @Published var selectMode = false
     @Published var selection: Set<UUID> = []
     @Published var collapsed: Set<String> = []
     @Published var statusByIP: [String: HostStatus] = [:]
+    @Published var history: [HostSnapshot] = []
 
     enum ToastKind { case ok, error, info }
     let path = "/etc/hosts"
@@ -48,8 +69,23 @@ final class HostsStore: ObservableObject {
         }
         rawText = raw
         lines = parseHosts(raw)
+        if history.isEmpty { history = HistoryStore.load() }
+        recordSnapshot(raw, label: "Current file")
         helperReady = !HelperClient.needsInstall()
         probeStatus()
+    }
+
+    // Prepend a snapshot (newest-first), collapsing no-op writes and capping the
+    // log. Persisted immediately so history survives relaunches.
+    private func recordSnapshot(_ content: String, label: String) {
+        guard content != history.first?.content else { return }
+        var updated = history
+        updated.insert(HostSnapshot(label: label, content: content), at: 0)
+        if updated.count > HistoryStore.maxSnapshots {
+            updated = Array(updated.prefix(HistoryStore.maxSnapshots))
+        }
+        history = updated
+        HistoryStore.save(updated)
     }
 
     func prepareSession(resetSigningKey: Bool = false) {
@@ -78,6 +114,63 @@ final class HostsStore: ObservableObject {
         prepareSession(resetSigningKey: true)
     }
 
+    // Whether biometric Touch ID can be used on this Mac right now.
+    var touchIDAvailable: Bool {
+        (try? SigningKey.ensureTouchIDAvailable()) != nil
+    }
+
+    // Called once on launch: auto-unlock only when the user's default is Touch ID,
+    // or when they have no PIN (so Touch ID is the only option — the original
+    // behavior). A PIN-preferring user is left locked to choose deliberately.
+    func autoUnlockIfPreferred() {
+        if defaultUnlock == .touchID || (defaultUnlock != .pin && !pinSet) {
+            unlockSession()
+        }
+    }
+
+    // MARK: PIN unlock (alternative to Touch ID)
+
+    // Saves a new PIN. Returns a user-facing error message, or nil on success.
+    func setPIN(_ pin: String) -> String? {
+        if let reason = PinStore.validate(pin) { return reason }
+        do {
+            try PinStore.set(pin)
+            pinSet = true
+            showToast("PIN saved", .ok)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    func removePIN() {
+        PinStore.clear()
+        pinSet = false
+        showToast("PIN removed", .info)
+    }
+
+    // Unlocks this session with a PIN instead of Touch ID. Returns false on a
+    // wrong PIN so the caller can keep the sheet open. The privileged helper is
+    // still installed/validated via the file-based signing key — the same path
+    // a Touch ID unlock takes once the session is open.
+    @discardableResult
+    func unlockWithPIN(_ pin: String) -> Bool {
+        guard !isPreparing, PinStore.verify(pin) else { return false }
+        sessionUnlocked = true
+        isPreparing = true
+        Task {
+            do {
+                if HelperClient.needsInstall() { try HelperClient.install() }
+                helperReady = !HelperClient.needsInstall()
+                showToast(helperReady ? "Unlocked for this session" : "Finish launch setup before editing",
+                          helperReady ? .ok : .error)
+            } catch HostsError.cancelled {
+            } catch { showToast(error.localizedDescription, .error) }
+            isPreparing = false
+        }
+        return true
+    }
+
     private func indexOfEntry(_ id: UUID) -> Int? {
         lines.firstIndex { if case .entry(let e) = $0 { return e.id == id } else { return false } }
     }
@@ -97,6 +190,7 @@ final class HostsStore: ObservableObject {
                 // resync the raw text. Re-parsing here would mint new UUIDs for
                 // every entry, making SwiftUI replace all rows — the visible "jump".
                 rawText = pendingContent
+                recordSnapshot(pendingContent, label: successMessage)
                 showToast(successMessage, .ok)
             } catch HostsError.cancelled {
                 lines = snapshot
@@ -112,7 +206,10 @@ final class HostsStore: ObservableObject {
 
     func toggle(_ id: UUID) {
         guard let i = indexOfEntry(id), case .entry(var e) = lines[i] else { return }
-        commit({ e.enabled.toggle(); lines[i] = .entry(e) },
+        // `e.enabled` here is the pre-toggle value, so the message describes the
+        // resulting state. Editing drops `raw` so this one line re-serializes
+        // canonically while every other line in the file passes through verbatim.
+        commit({ e.enabled.toggle(); e.raw = nil; lines[i] = .entry(e) },
                successMessage: e.enabled ? "Entry disabled" : "Entry enabled")
     }
 
@@ -138,7 +235,7 @@ final class HostsStore: ObservableObject {
         guard !ids.isEmpty else { return }
         commit({
             for i in lines.indices {
-                if case .entry(var e) = lines[i], ids.contains(e.id) { e.enabled = enabled; lines[i] = .entry(e) }
+                if case .entry(var e) = lines[i], ids.contains(e.id) { e.enabled = enabled; e.raw = nil; lines[i] = .entry(e) }
             }
         }, successMessage: "\(ids.count) \(ids.count == 1 ? "entry" : "entries") \(enabled ? "enabled" : "disabled")")
     }
@@ -172,11 +269,15 @@ final class HostsStore: ObservableObject {
 
     // MARK: Status probe (best-effort reachability; falls back to n/a)
 
+    private var isProbing = false
+
     func probeStatus() {
+        guard !isProbing else { return }   // don't stack overlapping ping storms
         let targets = Array(Set(entries.filter { e in
             e.enabled && ![.block, .broadcast].contains(ipKind(e.ip))
         }.map(\.ip))).prefix(48)
         guard !targets.isEmpty else { return }
+        isProbing = true
         Task.detached(priority: .utility) {
             await withTaskGroup(of: (String, HostStatus).self) { grp in
                 for ip in targets {
@@ -186,6 +287,7 @@ final class HostsStore: ObservableObject {
                     await MainActor.run { self.statusByIP[ip] = st }
                 }
             }
+            await MainActor.run { self.isProbing = false }
         }
     }
 
@@ -197,30 +299,58 @@ final class HostsStore: ObservableObject {
         p.arguments = ip.contains(":") ? ["-c", "1", ip] : ["-c", "1", "-t", "1", ip]
         p.standardOutput = Pipe(); p.standardError = Pipe()
         do { try p.run() } catch { return false }
-        let deadline = Date().addingTimeInterval(1.6)
-        while p.isRunning && Date() < deadline { usleep(50_000) }
-        if p.isRunning { p.terminate(); return false }
+        // Wait for ping to exit rather than busy-polling; a watchdog terminates it
+        // if it ever hangs (e.g. ping6 with no built-in timeout).
+        let watchdog = DispatchWorkItem { if p.isRunning { p.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.6, execute: watchdog)
+        p.waitUntilExit()
+        watchdog.cancel()
         return p.terminationStatus == 0
     }
 
-    func saveRaw(_ text: String) {
+    // Re-derive the in-memory model from freshly written content. Unlike load()
+    // this neither re-reads the file nor records another snapshot — the caller has
+    // already done both — it just resyncs lines/rawText and clears stale selection.
+    private func applyWrittenContent(_ content: String) {
+        rawText = content
+        lines = parseHosts(content)
+        selection.removeAll()
+        probeStatus()
+    }
+
+    // Restore a past snapshot by writing it back through the helper. The revert
+    // itself is recorded as a new snapshot, so it can be undone like any change.
+    func revert(to snapshot: HostSnapshot) {
         guard editingReady else {
             showToast("Unlock to make changes.", .error)
             return
         }
-        let snapshot = lines
-        let pendingContent = text.hasSuffix("\n") ? text : text + "\n"
+        guard snapshot.content != rawText else {
+            showToast("Already at this version", .info)
+            return
+        }
+        let previousLines = lines
+        let previousRaw = rawText
         Task {
             do {
-                try HelperClient.write(content: pendingContent)
-                load(); showToast("File saved", .ok)
+                try HelperClient.write(content: snapshot.content)
+                recordSnapshot(snapshot.content, label: "Reverted to \(Self.shortTime(snapshot.timestamp))")
+                applyWrittenContent(snapshot.content)
+                showToast("Reverted to earlier version", .ok)
             } catch HostsError.cancelled {
             } catch {
-                lines = snapshot
+                lines = previousLines
+                rawText = previousRaw
                 helperReady = !HelperClient.needsInstall()
                 showToast(error.localizedDescription, .error)
             }
         }
+    }
+
+    static func shortTime(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, h:mm a"
+        return f.string(from: date)
     }
 
     func flushDNS() {

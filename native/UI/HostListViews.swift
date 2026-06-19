@@ -39,7 +39,6 @@ struct StatusDot: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 7, height: 7)
-                .shadow(color: status == .na ? .clear : color.opacity(0.7), radius: 3)
             Text(label).font(.system(size: 12, weight: .medium)).foregroundColor(status == .na ? Theme.textMut : Theme.text2)
         }
     }
@@ -49,24 +48,73 @@ struct StatusDot: View {
 struct ThemedToggle: View {
     let on: Bool
     var amber: Bool = false
+    var accessibilityText: String = ""
     let action: () -> Void
+    @State private var splashScale = 0.65
+    @State private var splashOpacity = 0.0
+    @State private var knobPop = false
+
     var body: some View {
-        Button(action: action) {
-            Capsule()
-                .fill(on || amber ? AnyShapeStyle(amber ? LinearGradient.toggleAmber : LinearGradient.toggleOn)
-                                  : AnyShapeStyle(Theme.toggleOff))
-                .frame(width: 46, height: 27)
-                .overlay(alignment: on || amber ? .trailing : .leading) {
-                    Circle().fill(.white).frame(width: 21, height: 21)
-                        .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
-                        .padding(3)
-                }
-                .padding(.vertical, 9).padding(.horizontal, 4) // ≥44pt hit target
-                .contentShape(Rectangle())
+        Button {
+            runSplash()
+            action()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(splashColor.opacity(0.24))
+                    .frame(width: 40, height: 40)
+                    .scaleEffect(splashScale)
+                    .opacity(splashOpacity)
+
+                Capsule()
+                    .fill(on || amber ? AnyShapeStyle(amber ? LinearGradient.toggleAmber : LinearGradient.accentFill)
+                                      : AnyShapeStyle(Theme.toggleOff))
+                    .frame(width: 46, height: 27)
+                    .overlay(
+                        Capsule()
+                            .stroke(splashColor.opacity(0.45), lineWidth: 1.5)
+                            .scaleEffect(x: splashScale, y: splashScale * 1.12)
+                            .opacity(splashOpacity)
+                    )
+                    .overlay(alignment: on || amber ? .trailing : .leading) {
+                        Circle().fill(.white).frame(width: 21, height: 21)
+                            .scaleEffect(knobPop ? 1.12 : 1)
+                            .padding(3)
+                    }
+            }
+            .frame(width: 56, height: 45)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.16), value: on)
         .animation(.easeOut(duration: 0.16), value: amber)
+        .accessibilityLabel(accessibilityText.isEmpty ? "Toggle" : accessibilityText)
+        .accessibilityValue(on ? "On" : (amber ? "Partially on" : "Off"))
+    }
+
+    private var splashColor: Color {
+        amber ? Theme.amber : Theme.accent
+    }
+
+    private func runSplash() {
+        splashScale = 0.65
+        splashOpacity = 0.8
+
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.58)) {
+            knobPop = true
+        }
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.34)) {
+                splashScale = 1.8
+                splashOpacity = 0
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.62)) {
+                knobPop = false
+            }
+        }
     }
 }
 
@@ -120,7 +168,7 @@ struct GroupSection: View {
                 .background(Theme.surface2).clipShape(Capsule())
             Text(group.source).font(.system(size: 12)).foregroundColor(Theme.textDim)
             Spacer()
-            ThemedToggle(on: allOn, amber: anyOn && !allOn) {
+            ThemedToggle(on: allOn, amber: anyOn && !allOn, accessibilityText: "Toggle group \(group.name)") {
                 store.toggleGroup(entries, on: !anyOn)
             }
         }
@@ -146,7 +194,7 @@ struct EntryRow: View {
                     .font(.system(size: 19)).foregroundColor(selected ? Theme.accent : Theme.textMut)
                     .frame(width: 28)
             } else {
-                ThemedToggle(on: entry.enabled) { store.toggle(entry.id) }
+                ThemedToggle(on: entry.enabled, accessibilityText: "Toggle \(entry.hostnames.first ?? entry.ip)") { store.toggle(entry.id) }
             }
 
             IPBadge(ip: entry.ip, enabled: entry.enabled).frame(minWidth: 120, alignment: .leading)
@@ -170,7 +218,9 @@ struct EntryRow: View {
                 SourceChip(text: sourceTag(for: entry))
                 StatusDot(status: store.status(for: entry)).frame(width: 64, alignment: .leading)
                 Button(action: onEdit) { Image(systemName: "pencil") }.buttonStyle(IconButton())
+                    .accessibilityLabel("Edit \(entry.hostnames.first ?? entry.ip)")
                 Button(action: onDelete) { Image(systemName: "trash") }.buttonStyle(IconButton(danger: true))
+                    .accessibilityLabel("Delete \(entry.hostnames.first ?? entry.ip)")
             }
         }
         .padding(.horizontal, 16).frame(minHeight: 64)
@@ -219,10 +269,10 @@ struct BulkBar: View {
             Button { store.exitSelect() } label: { Text("Done") }.buttonStyle(PrimaryButton())
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(Theme.surface)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border, lineWidth: 1))
+        .background(Theme.surface.opacity(0.8))
+        .background(.ultraThinMaterial)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border.opacity(0.6), lineWidth: 0.5))
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
         .animation(.easeOut(duration: 0.15), value: store.selection.isEmpty)
     }
 }

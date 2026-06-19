@@ -1,24 +1,11 @@
 import Foundation
-import SwiftUI
 
 // MARK: - Semantic classification (IP kind, source, group, status)
 
+// Colors for each IPKind live in the UI layer (see Theme.swift) so Core stays
+// free of SwiftUI.
 enum IPKind {
     case loopback, ipv6, broadcast, privateNet, block, custom
-    var base: Color {
-        switch self {
-        case .loopback: return Color(hex: "5b8cff"); case .ipv6: return Color(hex: "a78bfa")
-        case .broadcast: return Color(hex: "94a3b8"); case .privateNet: return Color(hex: "34d399")
-        case .block: return Color(hex: "f87171"); case .custom: return Color(hex: "818cf8")
-        }
-    }
-    var lightText: Color {
-        switch self {
-        case .loopback: return Color(hex: "1d4ed8"); case .ipv6: return Color(hex: "6d28d9")
-        case .broadcast: return Color(hex: "475569"); case .privateNet: return Color(hex: "0f9d6b")
-        case .block: return Color(hex: "dc2626"); case .custom: return Color(hex: "4338ca")
-        }
-    }
 }
 
 func ipKind(_ ip: String) -> IPKind {
@@ -82,10 +69,15 @@ struct HostEntry: Identifiable, Equatable {
     var ip: String
     var hostnames: [String]
     var comment: String
+    // The verbatim line this entry was parsed from. Preserved so untouched
+    // entries round-trip byte-for-byte (alignment, inline-comment spacing, etc.).
+    // Cleared to nil whenever the entry is edited, so edited lines re-serialize
+    // canonically while every other line passes through unchanged.
+    var raw: String?
 
-    init(id: UUID = UUID(), enabled: Bool, ip: String, hostnames: [String], comment: String) {
+    init(id: UUID = UUID(), enabled: Bool, ip: String, hostnames: [String], comment: String, raw: String? = nil) {
         self.id = id; self.enabled = enabled; self.ip = ip
-        self.hostnames = hostnames; self.comment = comment
+        self.hostnames = hostnames; self.comment = comment; self.raw = raw
     }
 }
 

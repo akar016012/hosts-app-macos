@@ -61,14 +61,21 @@ enum HelperClient {
         defer { try? FileManager.default.removeItem(atPath: stage) }
         try pub.write(to: URL(fileURLWithPath: stage + "/pubkey"))
         try plist().write(toFile: stage + "/plist", atomically: true, encoding: .utf8)
+        // Record the uid allowed to drive the daemon (this user). The daemon checks
+        // the connecting peer's credentials against it.
+        try String(getuid()).write(toFile: stage + "/uid", atomically: true, encoding: .utf8)
 
+        // Every path below is interpolated into a shell command run as root, so it
+        // must be POSIX-quoted — `helperSrc`/`stage` derive from the app's on-disk
+        // location, which is user-controlled.
         let script = """
-        mkdir -p /Library/PrivilegedHelperTools '/Library/Application Support/HostsHelper' && \
-        cp '\(helperSrc)' '\(Helper.toolPath)' && chown root:wheel '\(Helper.toolPath)' && chmod 755 '\(Helper.toolPath)' && \
-        cp '\(stage)/pubkey' '\(Helper.pubkeyPath)' && chown root:wheel '\(Helper.pubkeyPath)' && chmod 644 '\(Helper.pubkeyPath)' && \
-        cp '\(stage)/plist' '\(Helper.plistPath)' && chown root:wheel '\(Helper.plistPath)' && chmod 644 '\(Helper.plistPath)' && \
-        launchctl bootout system '\(Helper.plistPath)' 2>/dev/null; \
-        launchctl bootstrap system '\(Helper.plistPath)'
+        mkdir -p /Library/PrivilegedHelperTools \(shq("/Library/Application Support/HostsHelper")) && \
+        cp \(shq(helperSrc)) \(shq(Helper.toolPath)) && chown root:wheel \(shq(Helper.toolPath)) && chmod 755 \(shq(Helper.toolPath)) && \
+        cp \(shq(stage + "/pubkey")) \(shq(Helper.pubkeyPath)) && chown root:wheel \(shq(Helper.pubkeyPath)) && chmod 644 \(shq(Helper.pubkeyPath)) && \
+        cp \(shq(stage + "/uid")) \(shq(Helper.uidPath)) && chown root:wheel \(shq(Helper.uidPath)) && chmod 644 \(shq(Helper.uidPath)) && \
+        cp \(shq(stage + "/plist")) \(shq(Helper.plistPath)) && chown root:wheel \(shq(Helper.plistPath)) && chmod 644 \(shq(Helper.plistPath)) && \
+        launchctl bootout system \(shq(Helper.plistPath)) 2>/dev/null; \
+        launchctl bootstrap system \(shq(Helper.plistPath))
         """
         try runAdmin(script, prompt: "Hosts needs your password once to install its privileged helper.")
 
@@ -78,10 +85,17 @@ enum HelperClient {
 
     static func uninstall() throws {
         let script = """
-        launchctl bootout system '\(Helper.plistPath)' 2>/dev/null; \
-        rm -f '\(Helper.plistPath)' '\(Helper.toolPath)' '\(Helper.pubkeyPath)'
+        launchctl bootout system \(shq(Helper.plistPath)) 2>/dev/null; \
+        rm -f \(shq(Helper.plistPath)) \(shq(Helper.toolPath)) \(shq(Helper.pubkeyPath)) \(shq(Helper.uidPath))
         """
         try runAdmin(script, prompt: "Remove the Hosts Touch ID helper?")
+    }
+
+    // Wraps a string as a single POSIX-shell-quoted token: surround with single
+    // quotes and replace each embedded single quote with '\'' . Safe to splice
+    // into a /bin/sh command line.
+    private static func shq(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // Sends a session-signed write request to the daemon. Touch ID unlocks the

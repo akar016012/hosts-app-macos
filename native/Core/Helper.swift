@@ -7,6 +7,9 @@ enum Helper {
     static let toolPath = "/Library/PrivilegedHelperTools/com.aditya.hostshelper"
     static let plistPath = "/Library/LaunchDaemons/com.aditya.hostshelper.plist"
     static let pubkeyPath = "/Library/Application Support/HostsHelper/pubkey"
+    // The uid authorized to drive the daemon, written at install time. The daemon
+    // rejects connections from any other (non-root) user.
+    static let uidPath = "/Library/Application Support/HostsHelper/uid"
     static let socketPath = "/var/run/com.aditya.hostshelper.sock"
     static let keyTag = "com.aditya.hostseditor.session-signing.v3".data(using: .utf8)!
     static let legacyKeyTags = [

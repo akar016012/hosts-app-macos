@@ -1,46 +1,76 @@
 import SwiftUI
 
-// MARK: - Header components
+// MARK: - In-app logo mark (mirrors the AppIcon.svg topology)
 
-struct ThemeMenu: View {
-    @ObservedObject private var themeStore = ThemeStore.shared
+struct HostsLogoMark: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("THEME").font(.system(size: 10, weight: .bold)).tracking(0.6)
-                .foregroundColor(Theme.textDim).padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 4)
-            ForEach(AppTheme.allCases) { t in
-                Button { themeStore.theme = t } label: {
-                    HStack(spacing: 11) {
-                        Circle().fill(t.dot).frame(width: 14, height: 14)
-                            .overlay(Circle().stroke(.white.opacity(0.15), lineWidth: 1))
-                        Text(t.label).font(.system(size: 13.5, weight: .semibold)).foregroundColor(Theme.text)
-                        Spacer()
-                        if themeStore.theme == t {
-                            Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundColor(Theme.accent)
-                        }
-                    }
-                    .padding(.horizontal, 12).frame(height: 38)
-                    .background(themeStore.theme == t ? Theme.accentSoft : .clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+        Canvas { ctx, size in
+            let cx = size.width / 2
+            let cy = size.height / 2
+            // All radii scale with canvas width so the mark looks right at any size.
+            let R:  CGFloat = size.width * 0.354   // satellite orbit  (~17 pt at 48 pt)
+            let cR: CGFloat = size.width * 0.146   // central circle   (~ 7 pt)
+            let sR: CGFloat = size.width * 0.083   // satellite circle  (~ 4 pt)
+            let lW: CGFloat = max(1, size.width * 0.031) // line width (~1.5 pt)
+
+            // Equilateral-triangle satellite positions — same geometry as AppIcon.svg
+            let sats: [CGPoint] = [
+                CGPoint(x: cx,           y: cy - R),
+                CGPoint(x: cx - R*0.866, y: cy + R*0.5),
+                CGPoint(x: cx + R*0.866, y: cy + R*0.5),
+            ]
+
+            // Connection lines: central circle edge → satellite circle edge
+            for sat in sats {
+                let dx = sat.x - cx, dy = sat.y - cy
+                let len = hypot(dx, dy)
+                let ux = dx/len, uy = dy/len
+                var p = Path()
+                p.move(to: CGPoint(x: cx + ux*cR,       y: cy + uy*cR))
+                p.addLine(to: CGPoint(x: sat.x - ux*sR, y: sat.y - uy*sR))
+                ctx.stroke(p, with: .color(.white.opacity(0.6)),
+                           style: StrokeStyle(lineWidth: lW, lineCap: .round))
             }
+
+            // Satellite nodes: outer ring + inner dot
+            for sat in sats {
+                ctx.stroke(
+                    Path(ellipseIn: CGRect(x: sat.x-sR, y: sat.y-sR, width: sR*2, height: sR*2)),
+                    with: .color(.white.opacity(0.55)),
+                    style: StrokeStyle(lineWidth: lW)
+                )
+                let dR = sR * 0.45
+                ctx.fill(
+                    Path(ellipseIn: CGRect(x: sat.x-dR, y: sat.y-dR, width: dR*2, height: dR*2)),
+                    with: .color(.white.opacity(0.9))
+                )
+            }
+
+            // Central hub — solid filled circle
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: cx-cR, y: cy-cR, width: cR*2, height: cR*2)),
+                with: .color(.white.opacity(0.95))
+            )
         }
-        .padding(6).frame(width: 230)
-        .background(Theme.surface)
     }
 }
 
+// MARK: - Header components
+
 struct LockPill: View {
     @ObservedObject var store: HostsStore
+    @Binding var showPinUnlock: Bool
+    @Binding var showPinSetup: Bool
+    var onUnlock: () -> Void
+
     var body: some View {
         let unlocked = store.editingReady
         let preparing = store.isPreparing
-        let tint: Color = preparing ? Theme.amber : (unlocked ? Theme.green : Theme.amber)
+        // Green when unlocked, red when locked; amber only during the brief unlock.
+        let tint: Color = preparing ? Theme.amber : (unlocked ? Theme.green : Theme.red)
         Button {
             if preparing { return }
-            if unlocked { store.lock() } else { store.unlockSession() }
+            if unlocked { store.lock() } else { onUnlock() }
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: preparing ? "touchid" : (unlocked ? "lock.open.fill" : "lock.fill"))
@@ -55,8 +85,26 @@ struct LockPill: View {
             .clipShape(RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(.plain)
-        .help(unlocked ? "Locked edits — click to lock now" : "Unlock edits for this session (Touch ID)")
-        .contextMenu { Button("Reset session key…") { store.setupTouchID() } }
+        .help(unlocked ? "Locked edits — click to lock now" : "Unlock edits for this session")
+        .contextMenu {
+            if store.pinSet {
+                Button("Unlock with PIN…") { showPinUnlock = true }
+                if store.sessionUnlocked {
+                    Button("Change PIN…") { showPinSetup = true }
+                    Button("Remove PIN") { store.removePIN() }
+                }
+            } else if store.sessionUnlocked {
+                Button("Set up PIN…") { showPinSetup = true }
+            }
+            Divider()
+            Menu("Default unlock") {
+                Picker("Default unlock", selection: $store.defaultUnlock) {
+                    ForEach(UnlockMethod.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.inline)
+            }
+            Button("Reset session key…") { store.setupTouchID() }
+        }
     }
 }
 
@@ -81,12 +129,12 @@ struct SegmentedFilter: View {
                         Text(f.rawValue).font(.system(size: 13, weight: .semibold))
                         Text("\(count(f))")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(on ? .white.opacity(0.9) : Theme.textDim)
+                            .foregroundColor(on ? Theme.onAccent.opacity(0.9) : Theme.textDim)
                             .padding(.horizontal, 6).padding(.vertical, 1)
-                            .background((on ? Color.white.opacity(0.2) : Theme.surface).opacity(on ? 1 : 0.6))
+                            .background((on ? Theme.onAccent.opacity(0.2) : Theme.surface).opacity(on ? 1 : 0.6))
                             .clipShape(Capsule())
                     }
-                    .foregroundColor(on ? .white : Theme.text2)
+                    .foregroundColor(on ? Theme.onAccent : Theme.text2)
                     .padding(.horizontal, 12).frame(height: 38)
                     .background(on ? AnyShapeStyle(LinearGradient.accentFill) : AnyShapeStyle(Color.clear))
                     .clipShape(RoundedRectangle(cornerRadius: 9))

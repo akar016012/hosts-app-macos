@@ -1,7 +1,9 @@
 // HostsHelper — a privileged LaunchDaemon (root) that writes /etc/hosts ONLY
-// when handed a request signed by the Secure Enclave key whose public key was
-// registered (as root) at install time. Each signature requires a live Touch ID
-// approval in the app, so no other process can drive it.
+// when handed a request whose ECDSA signature verifies against the public key
+// registered (as root) at install time. The matching private key is held by the
+// app behind a per-session unlock (Touch ID or PIN), so no other app can produce
+// a valid request. As defense-in-depth the daemon also rejects socket peers that
+// aren't the authorized user (or root).
 //
 // Wire protocol (one JSON object + "\n" per connection):
 //   request : {"ts":<int>,"nonce":"<uuid>","content":"<base64>","sig":"<base64>"}
@@ -14,10 +16,18 @@ import Foundation
 import Security
 import Darwin
 
-let HOSTS_PATH  = ProcessInfo.processInfo.environment["HOSTS_PATH"]      ?? "/etc/hosts"
-let SOCK_PATH   = ProcessInfo.processInfo.environment["HELPER_SOCKET"]   ?? "/var/run/com.aditya.hostshelper.sock"
-let PUBKEY_PATH = ProcessInfo.processInfo.environment["HELPER_PUBKEY"]   ?? "/Library/Application Support/HostsHelper/pubkey"
-let BACKUP_DIR  = ProcessInfo.processInfo.environment["HELPER_BACKUP"]   ?? "/Library/Application Support/HostsHelper/backups"
+// Security-critical paths are fixed constants — never taken from the environment,
+// which the daemon's launching context could otherwise influence to redirect the
+// write target or swap the trust anchor.
+let HOSTS_PATH  = "/etc/hosts"
+let SOCK_PATH   = "/var/run/com.aditya.hostshelper.sock"
+let PUBKEY_PATH = "/Library/Application Support/HostsHelper/pubkey"
+let UID_PATH    = "/Library/Application Support/HostsHelper/uid"
+let BACKUP_DIR  = "/Library/Application Support/HostsHelper/backups"
+
+// Largest /etc/hosts we'll accept (decoded). Generous for huge blocklists, but
+// bounds memory and rejects absurd payloads.
+let MAX_CONTENT_BYTES = 8_000_000
 
 func log(_ s: String) { FileHandle.standardError.write(("[hostshelper] " + s + "\n").data(using: .utf8)!) }
 
@@ -40,16 +50,84 @@ func canonicalMessage(ts: Int, nonce: String, contentB64: String) -> Data {
     Data("hostshelper-v1\n\(ts)\n\(nonce)\n\(contentB64)".utf8)
 }
 
+// The uid permitted to drive the daemon, recorded at install time. nil if the
+// file is missing (e.g. an old install) — in which case peer checking is skipped
+// for backward compatibility and the signature remains the sole gate.
+func authorizedUID() -> uid_t? {
+    guard let s = try? String(contentsOfFile: UID_PATH, encoding: .utf8)
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+          let u = UInt32(s) else { return nil }
+    return uid_t(u)
+}
+
+// Defense-in-depth: only accept connections from the authorized user (or root),
+// so a different local user can't even reach the request path. The socket is
+// world-connectable for compatibility, so this check does the real gating.
+func peerAuthorized(_ fd: Int32, _ authUID: uid_t?) -> Bool {
+    guard let authUID else { return true }
+    var uid: uid_t = 0
+    var gid: gid_t = 0
+    if getpeereid(fd, &uid, &gid) != 0 { return false }
+    return uid == authUID || uid == 0
+}
+
 var lastAcceptedTs = 0
 var recentNonces = Set<String>()
+var nonceOrder = [String]()
+
+struct WriteError: LocalizedError { let message: String; var errorDescription: String? { message } }
+
+// Reject payloads that aren't a plausible hosts file: too large, or containing
+// control characters (NUL etc.) that have no business in /etc/hosts.
+func validateContent(_ content: String) -> String? {
+    if content.utf8.count > MAX_CONTENT_BYTES { return "content too large" }
+    for scalar in content.unicodeScalars where scalar != "\n" && scalar != "\t" && scalar.value < 0x20 {
+        return "content has invalid control characters"
+    }
+    return nil
+}
+
+// Keep only the most recent N timestamped backups (filenames sort chronologically).
+func pruneBackups(keep: Int = 20) {
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: BACKUP_DIR) else { return }
+    let baks = files.filter { $0.hasPrefix("hosts-") && $0.hasSuffix(".bak") }.sorted()
+    guard baks.count > keep else { return }
+    for f in baks.prefix(baks.count - keep) {
+        try? FileManager.default.removeItem(atPath: "\(BACKUP_DIR)/\(f)")
+    }
+}
 
 func writeHosts(content: String) throws {
-    try? FileManager.default.createDirectory(atPath: BACKUP_DIR, withIntermediateDirectories: true)
+    try? FileManager.default.createDirectory(atPath: BACKUP_DIR, withIntermediateDirectories: true,
+                                             attributes: [.posixPermissions: 0o700])
     if let current = try? String(contentsOfFile: HOSTS_PATH, encoding: .utf8) {
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         try? current.write(toFile: "\(BACKUP_DIR)/hosts-\(stamp).bak", atomically: true, encoding: .utf8)
+        pruneBackups()
     }
-    try content.write(toFile: HOSTS_PATH, atomically: true, encoding: .utf8)
+
+    // Symlink-safe atomic replace: write a fresh temp file in the same directory
+    // with O_NOFOLLOW|O_EXCL (so an attacker-planted symlink can't redirect the
+    // write), then rename() over the target. rename replaces the name itself, so
+    // even if /etc/hosts were a symlink it's atomically swapped for a real file.
+    let tmpPath = HOSTS_PATH + ".hostsedit.tmp"
+    unlink(tmpPath)
+    let fd = open(tmpPath, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_EXCL, 0o644)
+    if fd < 0 { throw WriteError(message: "open temp failed (errno \(errno))") }
+    let bytes = Array(content.utf8)
+    let written = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, bytes.count) }
+    fchmod(fd, 0o644)
+    close(fd)
+    guard written == bytes.count else {
+        unlink(tmpPath)
+        throw WriteError(message: "short write")
+    }
+    if rename(tmpPath, HOSTS_PATH) != 0 {
+        let e = errno
+        unlink(tmpPath)
+        throw WriteError(message: "rename failed (errno \(e))")
+    }
+    chown(HOSTS_PATH, 0, 0)   // keep canonical root:wheel ownership
 }
 
 func handle(_ requestData: Data, pubKey: SecKey) -> String {
@@ -73,12 +151,20 @@ func handle(_ requestData: Data, pubKey: SecKey) -> String {
     let ok = SecKeyVerifySignature(pubKey, .ecdsaSignatureMessageX962SHA256, msg as CFData, sig as CFData, &err)
     if !ok { return "{\"ok\":false,\"error\":\"bad signature\"}" }
 
+    if let reason = validateContent(content) { return "{\"ok\":false,\"error\":\"\(reason)\"}" }
+
     do { try writeHosts(content: content) }
     catch { return "{\"ok\":false,\"error\":\"write failed: \(error.localizedDescription)\"}" }
 
     lastAcceptedTs = max(lastAcceptedTs, ts)
     recentNonces.insert(nonce)
-    if recentNonces.count > 512 { recentNonces.removeAll() }
+    nonceOrder.append(nonce)
+    // Bounded FIFO eviction: drop only the oldest nonce, never the whole set —
+    // clearing everything would let an old captured request replay after a flush.
+    if nonceOrder.count > 512 {
+        let oldest = nonceOrder.removeFirst()
+        recentNonces.remove(oldest)
+    }
     return "{\"ok\":true}"
 }
 
@@ -103,6 +189,7 @@ func serve() {
     signal(SIGPIPE, SIG_IGN)
 
     guard let pubKey = loadPublicKey() else { log("no public key; exiting"); exit(1) }
+    let authUID = authorizedUID()
 
     unlink(SOCK_PATH)
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -131,6 +218,7 @@ func serve() {
         if conn < 0 { continue }
         var on: Int32 = 1
         setsockopt(conn, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        guard peerAuthorized(conn, authUID) else { close(conn); continue }
         let request = readRequest(conn)
         let reply = handle(request, pubKey: pubKey)
         _ = (reply + "\n").withCString { write(conn, $0, strlen($0)) }
