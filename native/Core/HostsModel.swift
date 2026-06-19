@@ -52,6 +52,18 @@ func isSystemDefault(_ e: HostEntry) -> Bool {
     return false
 }
 
+// Whether a single hostname→IP pairing is a stock macOS default. Unlike
+// `isSystemDefault(_:)` this classifies one hostname rather than the whole
+// entry, so a user alias riding on a system line (e.g. `myhost` in
+// `::1 localhost myhost`) is correctly treated as user-defined.
+func isSystemDefaultHost(_ name: String, ip: String) -> Bool {
+    switch name.lowercased() {
+    case "broadcasthost": return ip == "255.255.255.255"
+    case "localhost":     return ip == "127.0.0.1" || ip == "::1" || ip == "fe80::1%lo0"
+    default:              return false
+    }
+}
+
 func group(for e: HostEntry) -> HostGroup {
     if isSystemDefault(e) { return .system }
     switch ipKind(e.ip) {
