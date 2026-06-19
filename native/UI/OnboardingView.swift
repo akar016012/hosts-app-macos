@@ -30,13 +30,14 @@ final class OnboardingStore: ObservableObject {
 // MARK: - Steps
 
 enum OnboardingStep: Int, CaseIterable {
-    case welcome, profile, security, appearance, ready
+    case welcome, profile, security, helper, appearance, ready
 
     var icon: String {
         switch self {
         case .welcome: return "sparkles"
         case .profile: return "person.crop.circle"
         case .security: return "lock.shield"
+        case .helper: return "gearshape.2"
         case .appearance: return "paintpalette"
         case .ready: return "checkmark.seal"
         }
@@ -46,6 +47,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .welcome: return "Welcome to Hosts"
         case .profile: return "Make it yours"
         case .security: return "Secure your edits"
+        case .helper: return "Enable the helper"
         case .appearance: return "Pick a look"
         case .ready: return "You're all set"
         }
@@ -55,6 +57,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .welcome: return "A fast, safe way to manage your Mac's /etc/hosts file."
         case .profile: return "Add a name so the app feels like yours. Stays on this Mac — no account needed."
         case .security: return "Editing /etc/hosts is privileged. Choose how you'll unlock changes each session."
+        case .helper: return "Hosts uses a tiny background helper to write /etc/hosts safely. macOS asks you to approve it once."
         case .appearance: return "Choose a theme. You can fine-tune or switch any time from your profile."
         case .ready: return "Everything's ready. You can change any of this later from your profile menu."
         }
@@ -156,6 +159,7 @@ struct OnboardingView: View {
         case .welcome:    welcomeContent
         case .profile:    profileContent
         case .security:   securityContent
+        case .helper:     helperContent
         case .appearance: appearanceContent
         case .ready:      readyContent
         }
@@ -239,6 +243,46 @@ struct OnboardingView: View {
         }
     }
 
+    private var helperContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 11) {
+                helperBullet("shield.lefthalf.filled",
+                             "A small background helper makes the actual write, so the app never runs as root.")
+                helperBullet("hand.raised.fill",
+                             "macOS asks you to switch it on once in System Settings → Login Items — no password needed.")
+                helperBullet("arrow.uturn.backward",
+                             "Remove it anytime from the Hosts menu or Login Items.")
+            }
+
+            Button { store.registerHelper() } label: {
+                Label(store.helperRegistered ? "Helper enabled" : "Enable helper…",
+                      systemImage: store.helperRegistered ? "checkmark.circle.fill" : "arrow.up.forward.app")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryButton())
+            .disabled(store.helperRegistered)
+
+            Text(store.helperRegistered
+                 ? "Approved and running — you're good to go."
+                 : "Opens System Settings → Login Items. Switch “Hosts” on, then come back. You can also do this later at your first edit.")
+                .font(.system(size: 11.5))
+                .foregroundColor(store.helperRegistered ? Theme.green : Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { store.refreshHelperStatus() }
+    }
+
+    private func helperBullet(_ icon: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Theme.accent).frame(width: 20)
+            Text(text).font(.system(size: 12.5)).foregroundColor(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true).lineSpacing(1.5)
+            Spacer(minLength: 0)
+        }
+    }
+
     private var appearanceContent: some View {
         VStack(spacing: 16) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 6), spacing: 14) {
@@ -278,6 +322,9 @@ struct OnboardingView: View {
                        profile.isSignedIn ? "Signed in as \(profile.trimmedName)" : "Using Hosts as a guest")
             summaryRow("lock.shield", "Default unlock: \(store.defaultUnlock.label)"
                        + (store.pinSet ? " · PIN set" : ""))
+            summaryRow("gearshape.2",
+                       store.helperRegistered ? "Privileged helper enabled" : "Helper not enabled — enable at first edit",
+                       ok: store.helperRegistered)
             summaryRow("paintpalette", "Theme: \(themeStore.theme.label)")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -369,13 +416,14 @@ struct OnboardingView: View {
         return ""
     }
 
-    private func summaryRow(_ icon: String, _ text: String) -> some View {
+    private func summaryRow(_ icon: String, _ text: String, ok: Bool = true) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon).font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Theme.accent).frame(width: 20)
             Text(text).font(.system(size: 13, weight: .medium)).foregroundColor(Theme.text2)
             Spacer(minLength: 0)
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundColor(Theme.green)
+            Image(systemName: ok ? "checkmark.circle.fill" : "circle.dashed")
+                .font(.system(size: 14)).foregroundColor(ok ? Theme.green : Theme.textDim)
         }
         .padding(.horizontal, 14).frame(height: 46)
         .background(Theme.surface2)

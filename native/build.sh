@@ -17,14 +17,29 @@ swiftc -O -parse-as-library "${APP_SOURCES[@]}" -o "$BIN"
 
 echo "→ Compiling privileged helper…"
 swiftc -O HostsHelper.swift -o com.aditya.hostshelper
-codesign --force --sign - com.aditya.hostshelper >/dev/null 2>&1 || true
 
 echo "→ Assembling app bundle…"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# SMAppService requires the daemon executable in Contents/MacOS and its launchd
+# plist in Contents/Library/LaunchDaemons (managed in-bundle, not /Library).
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchDaemons"
 mv "$BIN" "$APP/Contents/MacOS/$BIN"
-mv com.aditya.hostshelper "$APP/Contents/Resources/com.aditya.hostshelper"
-chmod +x "$APP/Contents/Resources/com.aditya.hostshelper"
+mv com.aditya.hostshelper "$APP/Contents/MacOS/com.aditya.hostshelper"
+chmod +x "$APP/Contents/MacOS/com.aditya.hostshelper"
+
+cat > "$APP/Contents/Library/LaunchDaemons/com.aditya.hostshelper.plist" <<DAEMON
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.aditya.hostshelper</string>
+  <key>BundleProgram</key><string>Contents/MacOS/com.aditya.hostshelper</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>/var/log/hostshelper.log</string>
+</dict>
+</plist>
+DAEMON
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -69,14 +84,21 @@ else
 fi
 rm -rf "$ICONSET"
 
-echo "→ Ad-hoc signing…"
-# Sign the bundled helper, then the app. No entitlements: the Secure Enclave key
-# uses the legacy keychain (kSecUseDataProtectionKeychain=false), so no
-# keychain-access-group entitlement is needed — and entitlements would get the
-# ad-hoc app killed by AMFI on launch.
-codesign --force --sign - "$APP/Contents/Resources/com.aditya.hostshelper" >/dev/null 2>&1 || true
-codesign --force --sign - "$APP" >/dev/null 2>&1 && echo "→ Signed"
-xattr -cr "$APP" 2>/dev/null || true
+# SMAppService refuses to register an ad-hoc ("-") signed bundle, so sign with a
+# real identity (a free Apple Development cert works for local testing; a paid
+# Developer ID is only needed to distribute to other Macs). Resolution order:
+#   1. SIGN_IDENTITY=… ./build.sh   (env override)
+#   2. native/.signid               (gitignored local file holding your identity)
+#   3. placeholder                  (so the repo never ships a personal identity)
+SIGN_IDENTITY="${SIGN_IDENTITY:-$( [ -f "$(dirname "$0")/.signid" ] && cat "$(dirname "$0")/.signid" || echo 'Apple Development: you@example.com (TEAMID)' )}"
+echo "→ Signing with: $SIGN_IDENTITY"
+# Helper first (nested code), then the app bundle seals it. Hardened runtime on both.
+# Pin the helper's identifier — codesign otherwise treats ".hostshelper" as a file
+# extension and truncates the identifier to "com.aditya".
+codesign --force --options runtime --identifier com.aditya.hostshelper \
+  --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/com.aditya.hostshelper"
+codesign --force --options runtime --sign "$SIGN_IDENTITY" "$APP"
+codesign --verify --deep --strict "$APP" && echo "→ Signed & verified"
 
 echo ""
 echo "✓ Built $(pwd)/$APP"

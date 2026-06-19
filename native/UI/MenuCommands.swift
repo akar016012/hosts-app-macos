@@ -18,10 +18,34 @@ extension Notification.Name {
     static let hpFlushDNS   = Notification.Name("hosts.menu.flushDNS")
     static let hpManagePIN  = Notification.Name("hosts.menu.managePIN")
     static let hpEditTheme  = Notification.Name("hosts.menu.editTheme")
+    static let hpUnregister = Notification.Name("hosts.menu.unregister")
 }
 
 func postMenuCommand(_ name: Notification.Name) {
     NotificationCenter.default.post(name: name, object: nil)
+}
+
+// The "Verify Helper" diagnostics panel is presented in its own AppKit window
+// (rather than a sheet on the main window) so opening it needs no shared state in
+// ContentView — keeping the wiring to this one file. A single retained window is
+// reused/brought-to-front on repeated invocations.
+private var diagnosticsWindow: NSWindow?
+
+private func showDiagnostics() {
+    if let win = diagnosticsWindow {
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return
+    }
+    let hosting = NSHostingController(rootView: DiagnosticsView())
+    let win = NSWindow(contentViewController: hosting)
+    win.title = "Verify Helper"
+    win.styleMask = [.titled, .closable]
+    win.isReleasedWhenClosed = false
+    win.center()
+    diagnosticsWindow = win
+    win.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
 }
 
 private func showAboutPanel() {
@@ -70,6 +94,9 @@ struct AppMenuCommands: Commands {
             Divider()
             Button("Flush DNS Cache") { postMenuCommand(.hpFlushDNS) }
                 .keyboardShortcut("k")
+            Divider()
+            Button("Verify Helper…") { showDiagnostics() }
+            Button("Remove Privileged Helper…") { postMenuCommand(.hpUnregister) }
         }
     }
 }

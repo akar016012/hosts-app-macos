@@ -140,7 +140,7 @@ enum SigningKey {
 
     // Read-only: returns the current key's public bytes, or nil if no key exists.
     // Unlike publicKeyData() this never creates a key or prompts for Touch ID, so
-    // it is safe to call from readiness checks like HelperClient.needsInstall().
+    // it is safe to call from readiness checks like HelperClient.needsEnroll().
     static func existingPublicKeyData() -> Data? {
         guard let key = existing(),
               let pub = SecKeyCopyPublicKey(key),

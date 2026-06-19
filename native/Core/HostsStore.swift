@@ -32,6 +32,10 @@ final class HostsStore: ObservableObject {
     @Published var lines: [HostLine] = []
     @Published var rawText: String = ""
     @Published var helperReady = false
+    // Whether the SMAppService daemon is registered + approved (enabled). Tracked
+    // separately from helperReady (which also requires key enrollment) so onboarding
+    // can guide the one-time Login Items approval before any unlock.
+    @Published var helperRegistered = ServiceManager.isEnabled
     @Published var sessionUnlocked = false
     @Published var isPreparing = false
     @Published var pinSet = PinStore.isSet
@@ -79,7 +83,7 @@ final class HostsStore: ObservableObject {
         lines = parseHosts(raw)
         if history.isEmpty { history = HistoryStore.load() }
         recordSnapshot(raw, label: "Current file")
-        helperReady = !HelperClient.needsInstall()
+        helperReady = HelperClient.isReady()
         probeStatus()
     }
 
@@ -103,10 +107,8 @@ final class HostsStore: ObservableObject {
             do {
                 try await SigningKey.authenticate(reason: resetSigningKey ? "reset Hosts session access" : "unlock Hosts for this session")
                 sessionUnlocked = true
-                if resetSigningKey || HelperClient.needsInstall() {
-                    try HelperClient.install(resetSigningKey: resetSigningKey)
-                }
-                helperReady = !HelperClient.needsInstall()
+                try HelperClient.prepare(resetSigningKey: resetSigningKey)
+                helperReady = HelperClient.isReady()
                 showToast(helperReady ? "Hosts is ready for this session" : "Finish launch setup before editing", helperReady ? .ok : .error)
             } catch HostsError.cancelled {
             } catch { showToast(error.localizedDescription, .error) }
@@ -175,8 +177,8 @@ final class HostsStore: ObservableObject {
             isPreparing = true
             Task {
                 do {
-                    if HelperClient.needsInstall() { try HelperClient.install() }
-                    helperReady = !HelperClient.needsInstall()
+                    try HelperClient.prepare()
+                    helperReady = HelperClient.isReady()
                     showToast(helperReady ? "Unlocked for this session" : "Finish launch setup before editing",
                               helperReady ? .ok : .error)
                 } catch HostsError.cancelled {
@@ -229,7 +231,7 @@ final class HostsStore: ObservableObject {
                 if gen == writeSeq { lines = snapshot }
                 // Re-derive readiness from the actual helper state: a transient
                 // hiccup keeps the session ready, a real loss demotes the UI.
-                helperReady = !HelperClient.needsInstall()
+                helperReady = HelperClient.isReady()
                 showToast(error.localizedDescription, .error)
             }
         }
@@ -258,7 +260,7 @@ final class HostsStore: ObservableObject {
                 if gen == writeSeq { lines = previousLines; rawText = previousRaw }
             } catch {
                 if gen == writeSeq { lines = previousLines; rawText = previousRaw }
-                helperReady = !HelperClient.needsInstall()
+                helperReady = HelperClient.isReady()
                 showToast(error.localizedDescription, .error)
             }
         }
@@ -444,7 +446,7 @@ final class HostsStore: ObservableObject {
             } catch HostsError.cancelled {
             } catch {
                 if gen == writeSeq { lines = previousLines; rawText = previousRaw }
-                helperReady = !HelperClient.needsInstall()
+                helperReady = HelperClient.isReady()
                 showToast(error.localizedDescription, .error)
             }
         }
@@ -454,6 +456,49 @@ final class HostsStore: ObservableObject {
         let f = DateFormatter()
         f.dateFormat = "MMM d, h:mm a"
         return f.string(from: date)
+    }
+
+    // Onboarding: register the bundled daemon and, if macOS needs approval, open
+    // System Settings → Login Items. No Touch ID / key enrollment here — that happens
+    // at first unlock. Safe to tap repeatedly; reflects the latest status.
+    func registerHelper() {
+        do {
+            try ServiceManager.registerIfNeeded()
+        } catch {
+            showToast("Couldn't register helper: \(error.localizedDescription)", .error)
+            return
+        }
+        switch ServiceManager.status {
+        case .enabled:
+            helperRegistered = true
+            showToast("Privileged helper enabled", .ok)
+        case .requiresApproval:
+            helperRegistered = false
+            ServiceManager.openLoginItems()
+            showToast("Enable “Hosts” in System Settings → Login Items", .info)
+        default:
+            helperRegistered = false
+            showToast("Helper is \(ServiceManager.statusDescription()).", .error)
+        }
+    }
+
+    // Re-read the live registration status (e.g. when an onboarding step appears, or
+    // after the user returns from System Settings).
+    func refreshHelperStatus() {
+        helperRegistered = ServiceManager.isEnabled
+    }
+
+    // Tear down the privileged daemon via SMAppService (no admin password). The user
+    // can fully remove it from System Settings → Login Items too.
+    func unregisterHelper() {
+        do {
+            try ServiceManager.unregister()
+            helperReady = false
+            helperRegistered = false
+            showToast("Privileged helper removed", .info)
+        } catch {
+            showToast("Couldn't remove helper: \(error.localizedDescription)", .error)
+        }
     }
 
     func flushDNS() {

@@ -4,8 +4,14 @@ import Foundation
 
 enum Helper {
     static let label = "com.aditya.hostshelper"
-    static let toolPath = "/Library/PrivilegedHelperTools/com.aditya.hostshelper"
-    static let plistPath = "/Library/LaunchDaemons/com.aditya.hostshelper.plist"
+    // Wire-protocol version the app speaks. The daemon (HostsHelper.swift) is a
+    // SEPARATE compilation unit that does NOT import this file, so it carries a
+    // mirrored `HELPER_PROTOCOL_VERSION` constant — the two MUST stay in sync.
+    static let protocolVersion = 1
+    // The launchd plist bundled at Contents/Library/LaunchDaemons/<plistName>; its
+    // file-name stem must equal `label`. SMAppService manages the install location,
+    // so there are no longer fixed /Library/{LaunchDaemons,PrivilegedHelperTools} paths.
+    static let plistName = "com.aditya.hostshelper.plist"
     static let pubkeyPath = "/Library/Application Support/HostsHelper/pubkey"
     // The uid authorized to drive the daemon, written at install time. The daemon
     // rejects connections from any other (non-root) user.

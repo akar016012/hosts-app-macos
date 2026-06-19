@@ -6,15 +6,32 @@
 // aren't the authorized user (or root).
 //
 // Wire protocol (one JSON object + "\n" per connection):
-//   request : {"ts":<int>,"nonce":"<uuid>","content":"<base64>","sig":"<base64>"}
-//   reply   : {"ok":true} | {"ok":false,"error":"..."}
+//   write  : {"cmd":"write","ts":<int>,"nonce":"<uuid>","content":"<base64>","sig":"<base64>"}
+//   enroll : {"cmd":"enroll","pubkey":"<base64>"}
+//   reply  : {"ok":true} | {"ok":false,"error":"..."}
+// "cmd" is optional and defaults to "write" for backward compatibility.
 //
-// Signed bytes (must match the app exactly):
+// Signed bytes for a write (must match the app exactly):
 //   "hostshelper-v1\n" + ts + "\n" + nonce + "\n" + contentBase64
+//
+// Trust on first use: with SMAppService there is no longer a root install script
+// to plant the trusted public key. Instead the daemon accepts one "enroll" from an
+// authorized peer (see peerAuthorized) to record the key root-owned; afterwards it
+// only re-enrolls for that same authorized peer (key rotation), so an unrelated
+// local user can't swap the trust anchor.
 
 import Foundation
 import Security
+import CryptoKit
 import Darwin
+
+// Protocol version this daemon speaks. The app (Core/Helper.swift) carries a
+// mirrored `Helper.protocolVersion` — the two MUST stay in sync; bump both
+// together whenever the wire format changes.
+let HELPER_PROTOCOL_VERSION = 1
+// Human-readable helper build/version string. Keep matching the app bundle's
+// CFBundleShortVersionString.
+let HELPER_VERSION = "1.0"
 
 // Security-critical paths are fixed constants — never taken from the environment,
 // which the daemon's launching context could otherwise influence to redirect the
@@ -90,6 +107,27 @@ func persistLastTs(_ ts: Int) {
 var lastAcceptedTs = loadLastTs()
 var recentNonces = Set<String>()
 var nonceOrder = [String]()
+// Loaded at startup but mutable: enroll can set/rotate the trusted key at runtime
+// (no install script plants it anymore). authUID likewise follows the first enroll.
+var trustedPubKey: SecKey? = loadPublicKey()
+var authUID: uid_t? = authorizedUID()
+
+// Persist the enrolled public key + authorized uid root-owned (dir 0700, files 0644
+// so the unprivileged app can read the pubkey back for its readiness check).
+func persistEnrollment(pubData: Data, uid: uid_t) -> Bool {
+    let dir = (PUBKEY_PATH as NSString).deletingLastPathComponent
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true,
+                                             attributes: [.posixPermissions: 0o755])
+    do {
+        try pubData.write(to: URL(fileURLWithPath: PUBKEY_PATH), options: .atomic)
+        try String(uid).write(toFile: UID_PATH, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: PUBKEY_PATH)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: UID_PATH)
+        return true
+    } catch {
+        log("enroll persist failed: \(error)"); return false
+    }
+}
 
 struct WriteError: LocalizedError { let message: String; var errorDescription: String? { message } }
 
@@ -146,33 +184,107 @@ func writeHosts(content: String) throws {
     chown(HOSTS_PATH, 0, 0)   // keep canonical root:wheel ownership
 }
 
-func handle(_ requestData: Data, pubKey: SecKey) -> String {
-    guard let obj = try? JSONSerialization.jsonObject(with: requestData) as? [String: Any],
-          let ts = obj["ts"] as? Int,
+// Record (or rotate) the trusted public key. Allowed only for an authorized peer:
+// on first run authUID is nil so the first local connector enrolls and becomes the
+// authorized uid; afterwards only that uid (or root) may rotate the key.
+func handleEnroll(_ obj: [String: Any], peerUID: uid_t?) -> String {
+    guard let pubB64 = obj["pubkey"] as? String, let pubData = Data(base64Encoded: pubB64) else {
+        return errReply("malformed_request", "malformed enroll")
+    }
+    let attrs: [String: Any] = [
+        kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+        kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+    ]
+    guard let key = SecKeyCreateWithData(pubData as CFData, attrs as CFDictionary, nil) else {
+        return errReply("invalid_content", "invalid public key")
+    }
+    let enrollUID = peerUID ?? authUID ?? 0
+    guard persistEnrollment(pubData: pubData, uid: enrollUID) else {
+        return errReply("write_failed", "enroll persist failed")
+    }
+    trustedPubKey = key
+    authUID = enrollUID
+    log("enrolled key for uid \(enrollUID)")
+    return "{\"ok\":true}"
+}
+
+// Structured failure reply: keeps the legacy `error` string for backward
+// compatibility while adding a stable machine-readable `code`. Built via string
+// interpolation is risky for arbitrary messages, so escape the message through
+// JSONSerialization.
+func errReply(_ code: String, _ message: String) -> String {
+    let obj: [String: Any] = ["ok": false, "code": code, "error": message]
+    if let data = try? JSONSerialization.data(withJSONObject: obj),
+       let s = String(data: data, encoding: .utf8) {
+        return s
+    }
+    // Should never happen for these simple values; fall back to a safe literal.
+    return "{\"ok\":false,\"code\":\"\(code)\",\"error\":\"helper error\"}"
+}
+
+// First 16 hex chars of a SHA-256 over the enrolled pubkey bytes — a stable
+// fingerprint that exposes no key material. nil when nothing is enrolled.
+func pubkeyFingerprint() -> String? {
+    guard let raw = FileManager.default.contents(atPath: PUBKEY_PATH) else { return nil }
+    let digest = SHA256.hash(data: raw)
+    return digest.map { String(format: "%02x", $0) }.joined().prefix(16).lowercased()
+}
+
+// Read-only diagnostics reply. Exposes no secrets (only a fingerprint of the
+// pubkey, never the key itself), so any peer already accepted by peerAuthorized
+// may call it without a signature.
+func handleStatus() -> String {
+    let obj: [String: Any] = [
+        "ok": true,
+        "version": HELPER_VERSION,
+        "protocol": HELPER_PROTOCOL_VERSION,
+        "enrolled": trustedPubKey != nil,
+        "authUID": authUID.map { Int($0) } as Any? ?? NSNull(),
+        "pubkeyFingerprint": pubkeyFingerprint() ?? NSNull(),
+        "lastTs": lastAcceptedTs,
+    ]
+    if let data = try? JSONSerialization.data(withJSONObject: obj),
+       let s = String(data: data, encoding: .utf8) {
+        return s
+    }
+    return "{\"ok\":true,\"version\":\"\(HELPER_VERSION)\",\"protocol\":\(HELPER_PROTOCOL_VERSION)}"
+}
+
+func handle(_ requestData: Data, peerUID: uid_t?) -> String {
+    guard let obj = try? JSONSerialization.jsonObject(with: requestData) as? [String: Any] else {
+        return errReply("malformed_request", "malformed request")
+    }
+    if (obj["cmd"] as? String) == "enroll" { return handleEnroll(obj, peerUID: peerUID) }
+    // Read-only diagnostics — no signature required (exposes no secrets).
+    if (obj["cmd"] as? String) == "status" { return handleStatus() }
+
+    // Writes require a trusted key — until enrolled there is nothing to verify against.
+    guard let pubKey = trustedPubKey else { return errReply("not_enrolled", "not enrolled") }
+    guard let ts = obj["ts"] as? Int,
           let nonce = obj["nonce"] as? String,
           let contentB64 = obj["content"] as? String,
           let sigB64 = obj["sig"] as? String,
           let sig = Data(base64Encoded: sigB64),
           let contentData = Data(base64Encoded: contentB64),
           let content = String(data: contentData, encoding: .utf8)
-    else { return "{\"ok\":false,\"error\":\"malformed request\"}" }
+    else { return errReply("malformed_request", "malformed request") }
 
     let now = Int(Date().timeIntervalSince1970)
     // Allow only a small clock lead but a wider lag (covers genuine skew without
     // widening the window for a pre-dated, captured request).
-    if ts - now > 30 || now - ts > 90 { return "{\"ok\":false,\"error\":\"stale request\"}" }
-    if ts < lastAcceptedTs - 90 { return "{\"ok\":false,\"error\":\"replayed timestamp\"}" }
-    if recentNonces.contains(nonce) { return "{\"ok\":false,\"error\":\"replayed nonce\"}" }
+    if ts - now > 30 || now - ts > 90 { return errReply("stale_request", "stale request") }
+    if ts < lastAcceptedTs - 90 { return errReply("replayed_timestamp", "replayed timestamp") }
+    if recentNonces.contains(nonce) { return errReply("replayed_nonce", "replayed nonce") }
 
     let msg = canonicalMessage(ts: ts, nonce: nonce, contentB64: contentB64)
     var err: Unmanaged<CFError>?
     let ok = SecKeyVerifySignature(pubKey, .ecdsaSignatureMessageX962SHA256, msg as CFData, sig as CFData, &err)
-    if !ok { return "{\"ok\":false,\"error\":\"bad signature\"}" }
+    if !ok { return errReply("bad_signature", "bad signature") }
 
-    if let reason = validateContent(content) { return "{\"ok\":false,\"error\":\"\(reason)\"}" }
+    if let reason = validateContent(content) { return errReply("invalid_content", reason) }
 
     do { try writeHosts(content: content) }
-    catch { return "{\"ok\":false,\"error\":\"write failed: \(error.localizedDescription)\"}" }
+    catch { return errReply("write_failed", "write failed: \(error.localizedDescription)") }
 
     lastAcceptedTs = max(lastAcceptedTs, ts)
     persistLastTs(lastAcceptedTs)
@@ -202,13 +314,14 @@ func readRequest(_ fd: Int32) -> Data {
 
 func serve() {
     // Writing a reply to a client that already closed its end (e.g. the app's
-    // isResponding()/needsInstall() probes connect and close without reading)
+    // isResponding()/readiness probes connect and close without reading)
     // raises SIGPIPE, whose default action would KILL this daemon. Ignore it so
     // such writes simply fail with EPIPE and the accept loop keeps running.
     signal(SIGPIPE, SIG_IGN)
 
-    guard let pubKey = loadPublicKey() else { log("no public key; exiting"); exit(1) }
-    let authUID = authorizedUID()
+    // Don't exit when no key is enrolled yet — the daemon must stay up to accept the
+    // first "enroll". Writes are rejected ("not enrolled") until a key is recorded.
+    if trustedPubKey == nil { log("no enrolled key yet; awaiting enroll") }
 
     unlink(SOCK_PATH)
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -238,8 +351,10 @@ func serve() {
         var on: Int32 = 1
         setsockopt(conn, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         guard peerAuthorized(conn, authUID) else { close(conn); continue }
+        var pu: uid_t = 0, pg: gid_t = 0
+        let peerUID: uid_t? = getpeereid(conn, &pu, &pg) == 0 ? pu : nil
         let request = readRequest(conn)
-        let reply = handle(request, pubKey: pubKey)
+        let reply = handle(request, peerUID: peerUID)
         _ = (reply + "\n").withCString { write(conn, $0, strlen($0)) }
         close(conn)
     }

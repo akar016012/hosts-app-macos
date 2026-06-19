@@ -114,6 +114,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .hpFlushDNS)) { _ in store.flushDNS() }
         .onReceive(NotificationCenter.default.publisher(for: .hpManagePIN)) { _ in showPinSetup = true }
         .onReceive(NotificationCenter.default.publisher(for: .hpEditTheme)) { _ in showThemeEditor = true }
+        .onReceive(NotificationCenter.default.publisher(for: .hpUnregister)) { _ in store.unregisterHelper() }
     }
 
     // MARK: Import / export

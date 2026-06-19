@@ -23,8 +23,16 @@ enum HelperClient {
         return true
     }
 
-    static func needsInstall() -> Bool {
-        guard isResponding() else { return true }
+    // Fully ready to accept writes: daemon registered + enabled, socket answering,
+    // and our current signing key is the one it trusts.
+    static func isReady() -> Bool {
+        ServiceManager.isEnabled && isResponding() && !needsEnroll()
+    }
+
+    // True if the daemon's recorded public key doesn't match our current signing key
+    // (or none is recorded yet), meaning we must (re-)enroll. The daemon writes the
+    // pubkey world-readable (0644) so this unprivileged check can compare bytes.
+    static func needsEnroll() -> Bool {
         guard let installed = FileManager.default.contents(atPath: Helper.pubkeyPath),
               let current = SigningKey.existingPublicKeyData() else {
             return true
@@ -62,57 +70,40 @@ enum HelperClient {
         return fd
     }
 
-    // One-time install: places the helper + public key + LaunchDaemon as root.
-    static func install(resetSigningKey: Bool = false) throws {
-        let pub = try SigningKey.publicKeyData(resetExistingKey: resetSigningKey)
-        guard let helperSrc = Bundle.main.resourcePath.map({ $0 + "/com.aditya.hostshelper" }),
-              FileManager.default.fileExists(atPath: helperSrc) else {
-            throw HostsError.failed("Bundled helper not found. Rebuild with build.sh.")
+    // Ensure the daemon is running and trusts our current signing key. Registers the
+    // bundled LaunchDaemon via SMAppService if needed (throwing a user-actionable
+    // message + deep-linking to Login Items when approval is pending), waits for the
+    // socket, then enrolls/rotates the public key over the socket. No admin password.
+    static func prepare(resetSigningKey: Bool = false) throws {
+        do {
+            try ServiceManager.registerIfNeeded()
+        } catch {
+            throw HostsError.failed("Couldn't register the Hosts helper: \(error.localizedDescription)")
         }
-        let stage = NSTemporaryDirectory() + "hostsinstall-\(UUID().uuidString)"
-        try FileManager.default.createDirectory(atPath: stage, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(atPath: stage) }
-        try pub.write(to: URL(fileURLWithPath: stage + "/pubkey"))
-        try plist().write(toFile: stage + "/plist", atomically: true, encoding: .utf8)
-        // Record the uid allowed to drive the daemon (this user). The daemon checks
-        // the connecting peer's credentials against it.
-        try String(getuid()).write(toFile: stage + "/uid", atomically: true, encoding: .utf8)
-
-        // Every path below is interpolated into a shell command run as root, so it
-        // must be POSIX-quoted — `helperSrc`/`stage` derive from the app's on-disk
-        // location, which is user-controlled.
-        let script = """
-        mkdir -p /Library/PrivilegedHelperTools \(shq("/Library/Application Support/HostsHelper")) && \
-        cp \(shq(helperSrc)) \(shq(Helper.toolPath)) && chown root:wheel \(shq(Helper.toolPath)) && chmod 755 \(shq(Helper.toolPath)) && \
-        cp \(shq(stage + "/pubkey")) \(shq(Helper.pubkeyPath)) && chown root:wheel \(shq(Helper.pubkeyPath)) && chmod 644 \(shq(Helper.pubkeyPath)) && \
-        cp \(shq(stage + "/uid")) \(shq(Helper.uidPath)) && chown root:wheel \(shq(Helper.uidPath)) && chmod 644 \(shq(Helper.uidPath)) && \
-        cp \(shq(stage + "/plist")) \(shq(Helper.plistPath)) && chown root:wheel \(shq(Helper.plistPath)) && chmod 644 \(shq(Helper.plistPath)) && \
-        launchctl bootout system \(shq(Helper.plistPath)) 2>/dev/null; \
-        launchctl bootstrap system \(shq(Helper.plistPath))
-        """
-        try runAdmin(script, prompt: "Hosts needs your password once to install its privileged helper.")
-
-        // Wait briefly for the daemon to bind its socket.
-        for _ in 0..<25 { if isResponding() { return }; usleep(200_000) }
+        if ServiceManager.status == .requiresApproval {
+            ServiceManager.openLoginItems()
+            throw HostsError.failed("Enable “Hosts” in System Settings → Login Items, then unlock again.")
+        }
+        guard ServiceManager.status == .enabled else {
+            throw HostsError.failed("Hosts helper is \(ServiceManager.statusDescription()). Try again.")
+        }
+        // Wait for the freshly-launched daemon to bind its socket.
+        for _ in 0..<25 { if isResponding() { break }; usleep(200_000) }
+        guard isResponding() else { throw HostsError.failed("Helper not responding after registration.") }
+        if resetSigningKey || needsEnroll() { try enroll(resetSigningKey: resetSigningKey) }
     }
 
-    static func uninstall() throws {
-        let script = """
-        launchctl bootout system \(shq(Helper.plistPath)) 2>/dev/null; \
-        rm -f \(shq(Helper.plistPath)) \(shq(Helper.toolPath)) \(shq(Helper.pubkeyPath)) \(shq(Helper.uidPath))
-        """
-        try runAdmin(script, prompt: "Remove the Hosts Touch ID helper?")
-    }
-
-    // Wraps a string as a single POSIX-shell-quoted token: surround with single
-    // quotes and replace each embedded single quote with '\'' . Safe to splice
-    // into a /bin/sh command line.
-    private static func shq(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    // Hand the daemon our public key (trust-on-first-use, or a rotation that the
+    // daemon only honors for the already-authorized user). Replaces the old root
+    // install script's job of planting the pubkey.
+    static func enroll(resetSigningKey: Bool = false) throws {
+        let pub = try SigningKey.publicKeyData(resetExistingKey: resetSigningKey)
+        let request: [String: Any] = ["cmd": "enroll", "pubkey": pub.base64EncodedString()]
+        try send(request, failureMessage: "Helper rejected enrollment.")
     }
 
     // Sends a session-signed write request to the daemon. Touch ID unlocks the
-    // app session; the helper validates this app's registered public key.
+    // app session; the helper validates this app's enrolled public key.
     static func write(content: String) throws {
         let ts = Int(Date().timeIntervalSince1970)
         let nonce = UUID().uuidString
@@ -120,7 +111,26 @@ enum HelperClient {
         let msg = Data("hostshelper-v1\n\(ts)\n\(nonce)\n\(contentB64)".utf8)
         let sig = try SigningKey.sign(msg).base64EncodedString()
 
-        let request: [String: Any] = ["ts": ts, "nonce": nonce, "content": contentB64, "sig": sig]
+        let request: [String: Any] = ["cmd": "write", "ts": ts, "nonce": nonce, "content": contentB64, "sig": sig]
+        try send(request, failureMessage: "Helper rejected the write.")
+    }
+
+    // One JSON object + "\n" per connection, then read the daemon's one-line
+    // reply and assert ok. Used by the throwing write/enroll path.
+    private static func send(_ request: [String: Any], failureMessage: String) throws {
+        guard let obj = try requestObject(request) else {
+            throw HostsError.failed("No response from helper.")
+        }
+        guard let ok = obj["ok"] as? Bool else {
+            throw HostsError.failed("No response from helper.")
+        }
+        if !ok { throw HostsError.failed((obj["error"] as? String) ?? failureMessage) }
+    }
+
+    // Socket round-trip returning the parsed reply object (or nil on no/garbled
+    // response). Throws only if the request itself can't be serialized or the
+    // daemon isn't reachable — callers that just want diagnostics swallow those.
+    private static func requestObject(_ request: [String: Any]) throws -> [String: Any]? {
         let body = try JSONSerialization.data(withJSONObject: request)
         guard let fd = connect(retries: 6) else { throw HostsError.failed("Helper not running. Re-run setup.") }
         defer { close(fd) }
@@ -135,30 +145,39 @@ enum HelperClient {
             reply.append(contentsOf: buf[0..<n])
             if reply.last == 0x0A { break }
         }
-        guard let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
-              let ok = obj["ok"] as? Bool else {
-            throw HostsError.failed("No response from helper.")
-        }
-        if !ok { throw HostsError.failed((obj["error"] as? String) ?? "Helper rejected the write.") }
+        return try? JSONSerialization.jsonObject(with: reply) as? [String: Any]
     }
 
-    private static func plist() -> String {
-        """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-          <key>Label</key><string>\(Helper.label)</string>
-          <key>ProgramArguments</key><array><string>\(Helper.toolPath)</string></array>
-          <key>RunAtLoad</key><true/>
-          <key>KeepAlive</key><true/>
-          <key>StandardErrorPath</key><string>/var/log/hostshelper.log</string>
-        </dict>
-        </plist>
-        """
+    // MARK: - Diagnostics
+
+    // Snapshot of the daemon's self-reported state (the read-only `status` command).
+    struct HelperStatus {
+        let version: String
+        let protocolVersion: Int
+        let enrolled: Bool
+        let authUID: UInt32?
+        let pubkeyFingerprint: String?
+        let lastTs: Int
     }
 
-    // Single password prompt for install/uninstall/flush (rare, privileged shell ops).
+    // Query the daemon's read-only status. Returns nil if it isn't reachable or
+    // the reply can't be parsed. Never throws — diagnostics are best-effort.
+    static func status() -> HelperStatus? {
+        guard let obj = (try? requestObject(["cmd": "status"])) ?? nil,
+              (obj["ok"] as? Bool) == true,
+              let version = obj["version"] as? String,
+              let proto = obj["protocol"] as? Int else { return nil }
+        let uid = (obj["authUID"] as? Int).map { UInt32(truncatingIfNeeded: $0) }
+        return HelperStatus(
+            version: version,
+            protocolVersion: proto,
+            enrolled: (obj["enrolled"] as? Bool) ?? false,
+            authUID: uid,
+            pubkeyFingerprint: obj["pubkeyFingerprint"] as? String,
+            lastTs: (obj["lastTs"] as? Int) ?? 0)
+    }
+
+    // Single password prompt for the rare privileged shell op that remains (DNS flush).
     static func runAdmin(_ shell: String, prompt: String) throws {
         let escaped = shell.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let appleScript = "do shell script \"\(escaped)\" with administrator privileges with prompt \"\(prompt)\""
