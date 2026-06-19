@@ -340,17 +340,24 @@ final class HostsStore: ObservableObject {
     // redundantly on the same IP; either way only the first line takes effect.
     // A hostname mapped to both an IPv4 and an IPv6 address (e.g. localhost on
     // 127.0.0.1 and ::1) is the standard dual-stack default, not a duplicate, so
-    // we key by hostname + family. Surfaced as a stat hint.
+    // we key by hostname + family. We dedupe per entry (so `127.0.0.1 a a` on a
+    // single line isn't a "duplicate") and ignore collisions that exist only
+    // among macOS system defaults — a pristine file maps `localhost` to both
+    // `::1` and `fe80::1%lo0` (both IPv6) and must not warn — while still
+    // flagging the moment a user-defined entry joins the collision. Stat hint.
     var duplicateCount: Int {
-        var counts: [String: Int] = [:]
+        var entryCount: [String: Int] = [:]
+        var hasUserEntry: [String: Bool] = [:]
         for e in entries where e.enabled {
             let family = e.ip.contains(":") ? "v6" : "v4"
-            for h in e.hostnames {
-                let key = "\(h.lowercased())|\(family)"
-                counts[key, default: 0] += 1
+            let system = isSystemDefault(e)
+            for name in Set(e.hostnames.map { $0.lowercased() }) {
+                let key = "\(name)|\(family)"
+                entryCount[key, default: 0] += 1
+                if !system { hasUserEntry[key] = true }
             }
         }
-        return counts.values.filter { $0 > 1 }.count
+        return entryCount.filter { $0.value > 1 && hasUserEntry[$0.key] == true }.count
     }
 
     func toggle(_ id: UUID) {
