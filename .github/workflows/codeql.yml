@@ -3,8 +3,13 @@
 # Swift is the security-sensitive surface (the privileged helper + the app), so it
 # is analyzed with a manual build that runs the same `swiftc` invocations as
 # native/build.sh, minus the code-signing step (signing is irrelevant to analysis
-# and would need certificates CI doesn't have). JavaScript/TypeScript is analyzed
-# build-free and starts covering web/ and remotion/ as soon as they are committed.
+# and would need certificates CI doesn't have).
+#
+# A javascript-typescript leg is intentionally omitted: there is no JS/TS in the
+# tracked repo yet (web/ and remotion/ are not committed), and CodeQL hard-fails
+# with "no source code seen" when a language matches nothing. Re-add the leg
+# (language: javascript-typescript, runner: ubuntu-latest, build-mode: none) once
+# web/ or remotion/ are committed.
 name: "CodeQL"
 
 on:
@@ -33,9 +38,6 @@ jobs:
           - language: swift
             runner: macos-latest
             build-mode: manual
-          - language: javascript-typescript
-            runner: ubuntu-latest
-            build-mode: none
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
