@@ -1,0 +1,61 @@
+# CodeQL — static security analysis. Results show up under the repo's Security tab.
+#
+# Swift is the security-sensitive surface (the privileged helper + the app), so it
+# is analyzed with a manual build that runs the same `swiftc` invocations as
+# native/build.sh, minus the code-signing step (signing is irrelevant to analysis
+# and would need certificates CI doesn't have). JavaScript/TypeScript is analyzed
+# build-free and starts covering web/ and remotion/ as soon as they are committed.
+name: "CodeQL"
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Weekly drift scan so newly disclosed query packs catch existing code.
+    - cron: "27 4 * * 1"
+
+# Least privilege: only what the action needs to upload results.
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: swift
+            runner: macos-latest
+            build-mode: manual
+          - language: javascript-typescript
+            runner: ubuntu-latest
+            build-mode: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # Mirror native/build.sh's compile steps (no signing) so CodeQL can trace the
+      # Swift build. Only runs for the swift matrix leg.
+      - name: Build Swift sources
+        if: matrix.build-mode == 'manual'
+        working-directory: native
+        run: |
+          swiftc -O -parse-as-library HostsEditor.swift Core/*.swift UI/*.swift -o HostsEditor
+          swiftc -O HostsHelper.swift -o com.aditya.hostshelper
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          category: "/language:${{ matrix.language }}"

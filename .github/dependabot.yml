@@ -1,0 +1,25 @@
+# Dependabot — keep CI actions (and, once committed, the Remotion npm deps) current.
+# Security-only updates are already on via the repo's Dependabot security updates;
+# this adds scheduled version-bump PRs on top of those.
+version: 2
+updates:
+  # GitHub Actions used by workflows in .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+
+  # Remotion / npm promo project. Tracked here so updates start automatically once
+  # remotion/ is committed; Dependabot ignores entries whose manifest is absent.
+  - package-ecosystem: "npm"
+    directory: "/remotion"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    labels:
+      - "dependencies"
