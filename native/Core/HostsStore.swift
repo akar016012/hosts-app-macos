@@ -141,13 +141,12 @@ final class HostsStore: ObservableObject {
         (try? SigningKey.ensureTouchIDAvailable()) != nil
     }
 
-    // Called once on launch: auto-unlock only when the user's default is Touch ID,
-    // or when they have no PIN (so Touch ID is the only option — the original
-    // behavior). A PIN-preferring user is left locked to choose deliberately.
+    // Called once on launch: auto-unlock only when the user has explicitly chosen
+    // Touch ID as their default. Users who never picked a preference (.ask) are left
+    // locked to unlock deliberately, rather than being surprised by a biometric
+    // prompt thrown at them the instant the app opens.
     func autoUnlockIfPreferred() {
-        if defaultUnlock == .touchID || (defaultUnlock != .pin && !pinSet) {
-            unlockSession()
-        }
+        if defaultUnlock == .touchID { unlockSession() }
     }
 
     // MARK: PIN unlock (alternative to Touch ID)

@@ -31,10 +31,11 @@ t.expect(looksLikeIP("fe80::1%lo0"), "valid IPv6 with zone id")
 t.expect(!looksLikeIP("a:b"), "invalid: single-colon a:b is not IPv6")
 t.expect(!looksLikeIP("example.com"), "invalid: hostname")
 t.expect(!looksLikeIP("localhost"), "invalid: bare hostname")
-// Document current behavior: the IPv6 regex permits non-hex zone chars only via
-// [0-9a-zA-Z]; a `:`-containing string that matches the loose regex and has >=2
-// colons passes even if not a strictly valid address.
-t.expect(looksLikeIP(":::"), "current behavior: ':::' passes the loose IPv6 check")
+// Malformed pseudo-IPv6 is now rejected: looksLikeIP validates the address via
+// inet_pton (after stripping any %zone), so ":::" no longer reads as an address.
+t.expect(!looksLikeIP(":::"), "invalid: ':::' is not a valid IPv6 address")
+t.expect(!looksLikeIP("12345::1"), "invalid: out-of-range IPv6 group")
+t.expect(!looksLikeIP("gggg::1"), "invalid: non-hex IPv6 group")
 
 // MARK: - 2. parseHosts / serializeHosts
 

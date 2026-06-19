@@ -31,7 +31,9 @@ enum HostsDiff {
     // Above this many lines on either side we skip the O(n·m) LCS and emit a coarse
     // "removed everything, added everything" diff for the changed region. Huge
     // blocklists (100k+ lines) would otherwise allocate gigabytes for the DP table.
-    static let lcsLineBudget = 4000
+    // The DP buffer is a flat [Int32] (~4·n·m bytes), so this budget caps worst-case
+    // memory at ~2500²·4 ≈ 25MB for the changed middle after prefix/suffix trimming.
+    static let lcsLineBudget = 2500
 
     static func stat(_ segments: [DiffSegment]) -> DiffStat {
         segments.reduce(into: DiffStat(added: 0, removed: 0)) { acc, seg in
@@ -99,12 +101,17 @@ enum HostsDiff {
     private static func lcsDiff(_ a: [String], _ b: [String], oldBase: Int, newBase: Int) -> [DiffSegment] {
         let n = a.count, m = b.count
         if n == 0 && m == 0 { return [] }
-        // dp[i][j] = LCS length of a[i...] and b[j...].
-        var dp = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
+        // Flat (n+1)×(m+1) Int32 DP buffer: dp[i*cols + j] = LCS length of a[i...]
+        // and b[j...]. A flat Int32 array uses ~4·n·m bytes with no per-row heap
+        // overhead — roughly a quarter of the old nested [[Int]] table.
+        let cols = m + 1
+        var dp = [Int32](repeating: 0, count: (n + 1) * cols)
         if n > 0 && m > 0 {
             for i in stride(from: n - 1, through: 0, by: -1) {
                 for j in stride(from: m - 1, through: 0, by: -1) {
-                    dp[i][j] = a[i] == b[j] ? dp[i + 1][j + 1] + 1 : max(dp[i + 1][j], dp[i][j + 1])
+                    dp[i * cols + j] = a[i] == b[j]
+                        ? dp[(i + 1) * cols + (j + 1)] + 1
+                        : max(dp[(i + 1) * cols + j], dp[i * cols + (j + 1)])
                 }
             }
         }
@@ -114,7 +121,7 @@ enum HostsDiff {
             if a[i] == b[j] {
                 segs.append(DiffSegment(kind: .same, text: a[i], oldLine: oldBase + i + 1, newLine: newBase + j + 1))
                 i += 1; j += 1
-            } else if dp[i + 1][j] >= dp[i][j + 1] {
+            } else if dp[(i + 1) * cols + j] >= dp[i * cols + (j + 1)] {
                 segs.append(DiffSegment(kind: .removed, text: a[i], oldLine: oldBase + i + 1, newLine: nil))
                 i += 1
             } else {
