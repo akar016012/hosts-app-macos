@@ -101,7 +101,8 @@ enum HelperClient {
     // install script's job of planting the pubkey.
     static func enroll(resetSigningKey: Bool = false) throws {
         let pub = try SigningKey.publicKeyData(resetExistingKey: resetSigningKey)
-        let request: [String: Any] = ["cmd": "enroll", "pubkey": pub.base64EncodedString()]
+        let request: [String: Any] = ["cmd": "enroll", "protocol": Helper.protocolVersion,
+                                      "pubkey": pub.base64EncodedString()]
         try send(request, failureMessage: "Helper rejected enrollment.")
     }
 
@@ -114,7 +115,8 @@ enum HelperClient {
         let msg = Data("hostshelper-v1\n\(ts)\n\(nonce)\n\(contentB64)".utf8)
         let sig = try SigningKey.sign(msg).base64EncodedString()
 
-        let request: [String: Any] = ["cmd": "write", "ts": ts, "nonce": nonce, "content": contentB64, "sig": sig]
+        let request: [String: Any] = ["cmd": "write", "protocol": Helper.protocolVersion,
+                                      "ts": ts, "nonce": nonce, "content": contentB64, "sig": sig]
         try send(request, failureMessage: "Helper rejected the write.")
     }
 
@@ -147,6 +149,9 @@ enum HelperClient {
             if n <= 0 { break }
             reply.append(contentsOf: buf[0..<n])
             if reply.last == 0x0A { break }
+            // The daemon's replies are tiny one-line JSON objects; cap the read so a
+            // wedged or misbehaving peer can't stream unbounded data into us.
+            if reply.count > 1_000_000 { break }
         }
         return try? JSONSerialization.jsonObject(with: reply) as? [String: Any]
     }

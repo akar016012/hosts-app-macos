@@ -42,7 +42,16 @@ The helper does not trust the app because of who is talking to it; it trusts a
   `/Library/Application Support/HostsHelper/uid`. The socket is world-connectable
   for compatibility, so the helper uses `getpeereid()` to reject connections from
   any user other than the authorized UID (or root) before processing a request.
-  The signature remains the real gate; the peer check is an extra layer.
+- **Peer code-signature requirement.** Before reading anything from a connection,
+  the helper resolves the peer's audit token (`LOCAL_PEERTOKEN`), builds a
+  `SecCode`, and requires it to satisfy a code requirement pinned to **this
+  daemon's own Team Identifier**, the app's bundle identifier
+  (`com.aditya.hostseditor`), and Apple's anchor — i.e. the connecting process must
+  actually be our signed app. This applies to the first `enroll` too, so an
+  unrelated local process can neither plant the trust anchor nor drive writes even
+  if it obtained the signing key. Root peers are exempt (already fully privileged);
+  ad-hoc/unsigned dev builds, which `SMAppService` won't register anyway, fall back
+  to the UID + signature gates because there is no team to pin against.
 - **Replay protection.** Requests carry a timestamp and a nonce. The helper
   rejects requests outside a tight clock window (30s lead / 90s lag), rejects
   timestamps older than the last accepted one, and rejects reused nonces. The
@@ -86,15 +95,19 @@ enough to force a keychain-password prompt on every signature. The file-based ke
 avoids that.
 
 The consequence, stated honestly: the `0600` permission protects the key from
-**other users** on the same Mac, but it does **not** protect it from malware or a
-compromised process running as the **same user**. Any process running as you can
-read the key file and, in principle, forge valid write requests to the helper —
-which only means it could edit `/etc/hosts`, the same thing any process running
-as you could attempt by other means. The Touch ID / PIN gate does not mitigate
-this, because it gates the app session, not access to the key file. Hardening
-this (e.g. Secure Enclave–backed keys with a stable signing identity) is future
-work and requires a stable, persistent code-signing identity rather than a
-short-lived per-developer certificate.
+**other users** on the same Mac. A process running as the **same user** can still
+read the key file — but on its own that is no longer enough to drive a write,
+because the **peer code-signature requirement** (above) rejects any connector that
+is not our signed app. To actually abuse a stolen key an attacker would have to
+present our code identity as well: that means compromising or injecting into the
+legitimate, hardened-runtime app process, not merely reading a file. The Touch ID
+/ PIN gate is still only an app-session control and does not factor into this.
+
+Residual risk: an attacker who can subvert the running signed app itself (code
+injection, a malicious dynamic library where the runtime permits it, etc.) can
+still issue writes. Further hardening — Secure Enclave–backed keys with a stable,
+persistent code-signing identity rather than a short-lived per-developer
+certificate — remains future work.
 
 ## Reporting a Vulnerability
 

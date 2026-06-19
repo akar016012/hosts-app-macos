@@ -8,6 +8,14 @@ import Security
 // MARK: - Session signing key
 
 enum SigningKey {
+    // Stringify a CFError without force-unwrapping: SecKey APIs don't guarantee the
+    // out-error is populated on failure, so a nil error must degrade to a label
+    // rather than crash with `err!`.
+    private static func errString(_ err: Unmanaged<CFError>?) -> String {
+        guard let err else { return "unknown error" }
+        return String(describing: err.takeRetainedValue())
+    }
+
     // The session signing key is an EC P-256 private key persisted as a 0600 file
     // in the user's Application Support directory — NOT in the keychain. A
     // keychain-stored key gates each use with an ACL bound to the app's code
@@ -111,10 +119,10 @@ enum SigningKey {
         ]
         var err: Unmanaged<CFError>?
         guard let key = SecKeyCreateRandomKey(attrs as CFDictionary, &err) else {
-            throw HostsError.failed("Signing key creation failed: \(err!.takeRetainedValue())")
+            throw HostsError.failed("Signing key creation failed: \(errString(err))")
         }
         guard let data = SecKeyCopyExternalRepresentation(key, &err) as Data? else {
-            throw HostsError.failed("Signing key export failed: \(err!.takeRetainedValue())")
+            throw HostsError.failed("Signing key export failed: \(errString(err))")
         }
         try persist(data)
         return key
@@ -136,7 +144,7 @@ enum SigningKey {
         guard let pub = SecKeyCopyPublicKey(key) else { throw HostsError.failed("No public key.") }
         var err: Unmanaged<CFError>?
         guard let data = SecKeyCopyExternalRepresentation(pub, &err) as Data? else {
-            throw HostsError.failed("Public key export failed: \(err!.takeRetainedValue())")
+            throw HostsError.failed("Public key export failed: \(errString(err))")
         }
         return data
     }
@@ -157,12 +165,14 @@ enum SigningKey {
         }
         var err: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(key, .ecdsaSignatureMessageX962SHA256, data as CFData, &err) as Data? else {
-            let e = err!.takeRetainedValue()
-            let code = CFErrorGetCode(e)
-            if code == errSecUserCanceled || code == LAError.userCancel.rawValue || code == -2 {
-                throw HostsError.cancelled
+            if let e = err?.takeRetainedValue() {
+                let code = CFErrorGetCode(e)
+                if code == errSecUserCanceled || code == LAError.userCancel.rawValue || code == -2 {
+                    throw HostsError.cancelled
+                }
+                throw HostsError.failed("Signing failed: \(e)")
             }
-            throw HostsError.failed("Signing failed: \(e)")
+            throw HostsError.failed("Signing failed: unknown error")
         }
         return sig
     }

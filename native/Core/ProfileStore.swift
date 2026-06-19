@@ -13,6 +13,11 @@ import UniformTypeIdentifiers
 // header can show a personalized initials avatar and gather preferences and
 // security controls under one Profile menu. Persisted in UserDefaults; the
 // security primitives it surfaces (PIN, signing key) live in their own stores.
+//
+// Main-actor isolated like the other ObservableObject stores (HostsStore,
+// SchemeStore): all of its @Published mutations drive SwiftUI, so they must land
+// on the main thread.
+@MainActor
 final class ProfileStore: ObservableObject {
     static let shared = ProfileStore()
 

@@ -20,6 +20,12 @@ keeps state, and how to remove or repair it. For the security rationale see
 - After approval, the app **enrolls** its session signing public key with the
   helper over the helper's socket (trust on first use). Editing controls stay
   disabled until the helper is enabled **and** the current signing key is enrolled.
+- On **every** connection (including the first enroll) the helper checks the peer's
+  audit token and requires the connecting process to be the app itself — code-signed
+  by the same Team Identifier as the helper, with the app's bundle id and Apple's
+  anchor. A differently-signed binary is rejected before any request is read. This
+  pins to the helper's *own* signing team, so any contributor's certificate works as
+  long as the app and helper are built and signed together by `build.sh`.
 - Because the helper lives in the bundle, **moving or deleting the app** effectively
   unregisters the daemon.
 
