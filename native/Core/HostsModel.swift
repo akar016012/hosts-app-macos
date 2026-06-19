@@ -59,7 +59,7 @@ func isSystemDefault(_ e: HostEntry) -> Bool {
 func isSystemDefaultHost(_ name: String, ip: String) -> Bool {
     switch name.lowercased() {
     case "broadcasthost": return ip == "255.255.255.255"
-    case "localhost":     return ["127.0.0.1", "::1", "fe80::1%lo0"].contains(ip)
+    case "localhost":     return ip == "127.0.0.1" || ip == "::1" || ip == "fe80::1%lo0"
     default:              return false
     }
 }
