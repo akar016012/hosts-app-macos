@@ -104,12 +104,16 @@ struct PinUnlockSheet: View {
 
     private func submit() {
         guard !pin.isEmpty else { return }
-        if store.unlockWithPIN(pin) {
+        switch store.unlockWithPIN(pin) {
+        case .unlocked:
             dismiss()
-        } else {
-            error = "Incorrect PIN."
+        case .wrong(let message):
+            error = message
             pin = ""
             focused = true
+        case .locked(let message):
+            error = message
+            pin = ""
         }
     }
 }

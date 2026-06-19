@@ -24,6 +24,9 @@ let SOCK_PATH   = "/var/run/com.aditya.hostshelper.sock"
 let PUBKEY_PATH = "/Library/Application Support/HostsHelper/pubkey"
 let UID_PATH    = "/Library/Application Support/HostsHelper/uid"
 let BACKUP_DIR  = "/Library/Application Support/HostsHelper/backups"
+// Highest accepted request timestamp, persisted root-owned so replay protection
+// survives a daemon restart/reboot (in-memory nonces are lost on restart).
+let STATE_PATH  = "/Library/Application Support/HostsHelper/last-ts"
 
 // Largest /etc/hosts we'll accept (decoded). Generous for huge blocklists, but
 // bounds memory and rejects absurd payloads.
@@ -71,7 +74,20 @@ func peerAuthorized(_ fd: Int32, _ authUID: uid_t?) -> Bool {
     return uid == authUID || uid == 0
 }
 
-var lastAcceptedTs = 0
+func loadLastTs() -> Int {
+    guard let s = try? String(contentsOfFile: STATE_PATH, encoding: .utf8)
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+          let v = Int(s) else { return 0 }
+    return v
+}
+
+func persistLastTs(_ ts: Int) {
+    try? FileManager.default.createDirectory(atPath: (STATE_PATH as NSString).deletingLastPathComponent,
+                                             withIntermediateDirectories: true)
+    try? String(ts).write(toFile: STATE_PATH, atomically: true, encoding: .utf8)
+}
+
+var lastAcceptedTs = loadLastTs()
 var recentNonces = Set<String>()
 var nonceOrder = [String]()
 
@@ -142,7 +158,9 @@ func handle(_ requestData: Data, pubKey: SecKey) -> String {
     else { return "{\"ok\":false,\"error\":\"malformed request\"}" }
 
     let now = Int(Date().timeIntervalSince1970)
-    if abs(now - ts) > 90 { return "{\"ok\":false,\"error\":\"stale request\"}" }
+    // Allow only a small clock lead but a wider lag (covers genuine skew without
+    // widening the window for a pre-dated, captured request).
+    if ts - now > 30 || now - ts > 90 { return "{\"ok\":false,\"error\":\"stale request\"}" }
     if ts < lastAcceptedTs - 90 { return "{\"ok\":false,\"error\":\"replayed timestamp\"}" }
     if recentNonces.contains(nonce) { return "{\"ok\":false,\"error\":\"replayed nonce\"}" }
 
@@ -157,6 +175,7 @@ func handle(_ requestData: Data, pubKey: SecKey) -> String {
     catch { return "{\"ok\":false,\"error\":\"write failed: \(error.localizedDescription)\"}" }
 
     lastAcceptedTs = max(lastAcceptedTs, ts)
+    persistLastTs(lastAcceptedTs)
     recentNonces.insert(nonce)
     nonceOrder.append(nonce)
     // Bounded FIFO eviction: drop only the oldest nonce, never the whole set —

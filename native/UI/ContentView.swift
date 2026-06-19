@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - Root view
 
 struct ContentView: View {
-    @StateObject private var store = HostsStore()
+    @ObservedObject private var store = HostsStore.shared
     @ObservedObject private var themeStore = ThemeStore.shared
     @ObservedObject private var onboarding = OnboardingStore.shared
     @State private var search = ""
@@ -102,6 +102,41 @@ struct ContentView: View {
                                onTouchID: { store.unlockSession() },
                                onPIN: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: presentPIN) })
         }
+        .onReceive(NotificationCenter.default.publisher(for: .hpNewEntry)) { _ in
+            guarded { editorEntry = nil; showingEditor = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .hpImport)) { _ in importHosts() }
+        .onReceive(NotificationCenter.default.publisher(for: .hpExport)) { _ in exportHosts() }
+        .onReceive(NotificationCenter.default.publisher(for: .hpUndo)) { _ in store.undoLast() }
+        .onReceive(NotificationCenter.default.publisher(for: .hpFind)) { _ in searchFocused = true }
+        .onReceive(NotificationCenter.default.publisher(for: .hpRaw)) { _ in showingRaw = true }
+        .onReceive(NotificationCenter.default.publisher(for: .hpHistory)) { _ in showingHistory = true }
+        .onReceive(NotificationCenter.default.publisher(for: .hpFlushDNS)) { _ in store.flushDNS() }
+        .onReceive(NotificationCenter.default.publisher(for: .hpManagePIN)) { _ in showPinSetup = true }
+        .onReceive(NotificationCenter.default.publisher(for: .hpEditTheme)) { _ in showThemeEditor = true }
+    }
+
+    // MARK: Import / export
+
+    private func importHosts() {
+        guard store.editingReady else { store.nudgeLocked(); return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a hosts file to import. This replaces the current /etc/hosts."
+        if panel.runModal() == .OK, let url = panel.url {
+            store.importHosts(from: url)
+        }
+    }
+
+    private func exportHosts() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "hosts"
+        panel.message = "Export the current /etc/hosts contents to a file."
+        if panel.runModal() == .OK, let url = panel.url {
+            store.exportHosts(to: url)
+        }
     }
 
     // MARK: Unlock routing
@@ -144,24 +179,12 @@ struct ContentView: View {
                 .buttonStyle(SoftButton())
             Button { guarded { editorEntry = nil; showingEditor = true } } label: { Label("New", systemImage: "plus") }
                 .buttonStyle(PrimaryButton())
-                .keyboardShortcut("n", modifiers: .command)
 
             ProfileBadge(showProfile: $showProfile, store: store,
                          showProfileEdit: $showProfileEdit, showPinSetup: $showPinSetup,
                          showThemeEditor: $showThemeEditor)
         }
         .padding(.horizontal, 22).padding(.vertical, 16)
-        .background(keyboardShortcuts)
-    }
-
-    // Zero-size buttons that exist only to carry app-wide ⌘ shortcuts.
-    private var keyboardShortcuts: some View {
-        Group {
-            Button("") { searchFocused = true }.keyboardShortcut("f", modifiers: .command)
-            Button("") { showingHistory = true }.keyboardShortcut("y", modifiers: .command)
-            Button("") { showingRaw = true }.keyboardShortcut("r", modifiers: .command)
-        }
-        .opacity(0).frame(width: 0, height: 0)
     }
 
     // MARK: Toolbar + stats
@@ -173,6 +196,14 @@ struct ContentView: View {
                 TextField("Search IP, hostname, or comment…", text: $search)
                     .textFieldStyle(.plain).font(.system(size: 13.5)).foregroundColor(Theme.text)
                     .focused($searchFocused)
+                    .onExitCommand { if !search.isEmpty { search = "" } else { searchFocused = false } }
+                if !search.isEmpty {
+                    Button { search = "" } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 13))
+                    }
+                    .buttonStyle(.plain).foregroundColor(Theme.textDim)
+                    .accessibilityLabel("Clear search")
+                }
             }
             .padding(.horizontal, 14).frame(height: 44)
             .background(Theme.surface2)
@@ -200,6 +231,13 @@ struct ContentView: View {
             if store.blockedCount > 0 {
                 Text("·").foregroundColor(Theme.textMut)
                 Text("\(store.blockedCount) blocked").foregroundColor(Theme.red)
+            }
+            if store.duplicateCount > 0 {
+                Text("·").foregroundColor(Theme.textMut)
+                Label("\(store.duplicateCount) duplicate \(store.duplicateCount == 1 ? "host" : "hosts")",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .foregroundColor(Theme.amber)
+                    .help("A hostname maps to more than one IP across enabled entries. The first match wins.")
             }
             Spacer()
         }

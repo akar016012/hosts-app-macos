@@ -9,13 +9,30 @@ macOS DNS cache.
 - **Toggle entries on/off** without deleting them (comments the line out).
 - **Add / edit / delete** entries with IP + hostname validation.
 - **Search & filter** by IP, hostname, or comment; filter by active/disabled.
+- **Duplicate detection** — flags hostnames that map to more than one IP.
+- **Import / export** an entire hosts file (File menu).
 - **Raw editor** for direct edits to the whole file.
-- **Touch ID or PIN session unlock** for edits through a privileged helper.
-- **Change history** with one-click revert to earlier `/etc/hosts` snapshots.
+- **Touch ID or PIN session unlock** for edits through a privileged helper, with
+  brute-force lockout after repeated wrong PIN attempts.
+- **Change history** with one-click revert to earlier `/etc/hosts` snapshots, and
+  Undo Last Change (⌥⌘Z).
+- **Full menu bar** (File / Edit / Hosts) and a **Settings window** (⌘,).
 - **Profile and appearance controls** with built-in themes and a custom theme editor.
 - **Automatic backups** — a timestamped copy is saved before every write.
 - **Flush DNS** button (macOS).
 - No web server, browser UI, Node.js, or npm dependencies.
+
+### Keyboard shortcuts
+
+| Action | Shortcut |
+| --- | --- |
+| New entry | ⌘N |
+| Import / Export hosts file | ⌘O / ⇧⌘E |
+| Find | ⌘F |
+| Raw file / History | ⌘R / ⌘Y |
+| Undo last change | ⌥⌘Z |
+| Flush DNS cache | ⌘K |
+| Settings | ⌘, |
 
 ## Build
 

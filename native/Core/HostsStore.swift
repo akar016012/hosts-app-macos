@@ -17,8 +17,16 @@ enum UnlockMethod: String, CaseIterable {
     }
 }
 
+// Result of a PIN unlock attempt, carrying a user-facing message for the wrong
+// and locked-out cases so the sheet can explain what happened.
+enum PinOutcome { case unlocked, wrong(String), locked(String) }
+
 @MainActor
 final class HostsStore: ObservableObject {
+    // Single shared instance so menu commands and the Settings scene act on the
+    // same state as the main window.
+    static let shared = HostsStore()
+
     static let defaultUnlockKey = "defaultUnlock"
 
     @Published var lines: [HostLine] = []
@@ -153,27 +161,47 @@ final class HostsStore: ObservableObject {
     // wrong PIN so the caller can keep the sheet open. The privileged helper is
     // still installed/validated via the file-based signing key — the same path
     // a Touch ID unlock takes once the session is open.
-    @discardableResult
-    func unlockWithPIN(_ pin: String) -> Bool {
-        guard !isPreparing, PinStore.verify(pin) else { return false }
-        sessionUnlocked = true
-        isPreparing = true
-        Task {
-            do {
-                if HelperClient.needsInstall() { try HelperClient.install() }
-                helperReady = !HelperClient.needsInstall()
-                showToast(helperReady ? "Unlocked for this session" : "Finish launch setup before editing",
-                          helperReady ? .ok : .error)
-            } catch HostsError.cancelled {
-            } catch { showToast(error.localizedDescription, .error) }
-            isPreparing = false
+    func unlockWithPIN(_ pin: String) -> PinOutcome {
+        guard !isPreparing else { return .wrong("Please wait…") }
+        switch PinStore.verify(pin) {
+        case .lockedOut(let seconds):
+            return .locked("Too many attempts. Try again in \(Self.formatDuration(seconds)).")
+        case .wrong(let remaining):
+            return .wrong(remaining <= 2
+                ? "Incorrect PIN — \(remaining) attempt\(remaining == 1 ? "" : "s") left."
+                : "Incorrect PIN.")
+        case .ok:
+            sessionUnlocked = true
+            isPreparing = true
+            Task {
+                do {
+                    if HelperClient.needsInstall() { try HelperClient.install() }
+                    helperReady = !HelperClient.needsInstall()
+                    showToast(helperReady ? "Unlocked for this session" : "Finish launch setup before editing",
+                              helperReady ? .ok : .error)
+                } catch HostsError.cancelled {
+                } catch { showToast(error.localizedDescription, .error) }
+                isPreparing = false
+            }
+            return .unlocked
         }
-        return true
+    }
+
+    // "45s" / "2m" / "1m 30s" for lockout messaging.
+    static func formatDuration(_ seconds: Int) -> String {
+        if seconds < 60 { return "\(seconds)s" }
+        let m = seconds / 60, s = seconds % 60
+        return s == 0 ? "\(m)m" : "\(m)m \(s)s"
     }
 
     private func indexOfEntry(_ id: UUID) -> Int? {
         lines.firstIndex { if case .entry(let e) = $0 { return e.id == id } else { return false } }
     }
+
+    // Monotonic token identifying the most recent write. A failed write only rolls
+    // back the UI if it's still the latest one — so a stale failure can't clobber a
+    // newer optimistic edit that already succeeded or is in flight.
+    private var writeSeq = 0
 
     private func commit(_ mutate: () -> Void, successMessage: String) {
         guard editingReady else {
@@ -183,9 +211,12 @@ final class HostsStore: ObservableObject {
         let snapshot = lines
         mutate()
         let pendingContent = serializeHosts(lines)
+        writeSeq += 1
+        let gen = writeSeq
         Task {
             do {
-                try HelperClient.write(content: pendingContent)
+                // Serialized + off-main so concurrent edits can't interleave writes.
+                try await HelperGateway.shared.write(pendingContent)
                 // Keep the optimistic in-memory lines (stable identities) and just
                 // resync the raw text. Re-parsing here would mint new UUIDs for
                 // every entry, making SwiftUI replace all rows — the visible "jump".
@@ -193,15 +224,86 @@ final class HostsStore: ObservableObject {
                 recordSnapshot(pendingContent, label: successMessage)
                 showToast(successMessage, .ok)
             } catch HostsError.cancelled {
-                lines = snapshot
+                if gen == writeSeq { lines = snapshot }
             } catch {
-                lines = snapshot
+                if gen == writeSeq { lines = snapshot }
                 // Re-derive readiness from the actual helper state: a transient
                 // hiccup keeps the session ready, a real loss demotes the UI.
                 helperReady = !HelperClient.needsInstall()
                 showToast(error.localizedDescription, .error)
             }
         }
+    }
+
+    // MARK: Import / export
+
+    // Replace the whole file in one privileged write (used by import and could back
+    // other bulk operations). Re-parses on success so identities resync to disk.
+    func replaceAll(with content: String, label: String) {
+        guard editingReady else {
+            showToast("Unlock to make changes.", .error)
+            return
+        }
+        let previousLines = lines
+        let previousRaw = rawText
+        writeSeq += 1
+        let gen = writeSeq
+        Task {
+            do {
+                try await HelperGateway.shared.write(content)
+                recordSnapshot(content, label: label)
+                applyWrittenContent(content)
+                showToast(label, .ok)
+            } catch HostsError.cancelled {
+                if gen == writeSeq { lines = previousLines; rawText = previousRaw }
+            } catch {
+                if gen == writeSeq { lines = previousLines; rawText = previousRaw }
+                helperReady = !HelperClient.needsInstall()
+                showToast(error.localizedDescription, .error)
+            }
+        }
+    }
+
+    // Write the current file contents to a user-chosen location (unprivileged).
+    func exportHosts(to url: URL) {
+        do {
+            try rawText.write(to: url, atomically: true, encoding: .utf8)
+            showToast("Exported to \(url.lastPathComponent)", .ok)
+        } catch {
+            showToast("Export failed: \(error.localizedDescription)", .error)
+        }
+    }
+
+    // Read a hosts file from disk and replace /etc/hosts with it (privileged).
+    func importHosts(from url: URL) {
+        guard editingReady else { showToast("Unlock to make changes.", .error); return }
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
+            showToast("Could not read \(url.lastPathComponent)", .error)
+            return
+        }
+        replaceAll(with: content, label: "Imported \(url.lastPathComponent)")
+    }
+
+    // Revert to the previous distinct snapshot (menu/keyboard "Undo Last Change").
+    func undoLast() {
+        guard editingReady else { showToast("Unlock to make changes.", .error); return }
+        guard history.count > 1 else { showToast("Nothing to undo", .info); return }
+        revert(to: history[1])
+    }
+
+    // Hostnames that resolve to more than one IP across enabled entries — a likely
+    // mistake (first match wins in /etc/hosts). Surfaced as a stat hint.
+    var duplicateCount: Int {
+        var seen: [String: String] = [:]
+        var dupes = Set<String>()
+        for e in entries where e.enabled {
+            for h in e.hostnames {
+                let key = h.lowercased()
+                if let ip = seen[key], ip != e.ip { dupes.insert(key) }
+                else if seen[key] == nil { seen[key] = e.ip }
+            }
+        }
+        return dupes.count
     }
 
     func toggle(_ id: UUID) {
@@ -331,16 +433,17 @@ final class HostsStore: ObservableObject {
         }
         let previousLines = lines
         let previousRaw = rawText
+        writeSeq += 1
+        let gen = writeSeq
         Task {
             do {
-                try HelperClient.write(content: snapshot.content)
+                try await HelperGateway.shared.write(snapshot.content)
                 recordSnapshot(snapshot.content, label: "Reverted to \(Self.shortTime(snapshot.timestamp))")
                 applyWrittenContent(snapshot.content)
                 showToast("Reverted to earlier version", .ok)
             } catch HostsError.cancelled {
             } catch {
-                lines = previousLines
-                rawText = previousRaw
+                if gen == writeSeq { lines = previousLines; rawText = previousRaw }
                 helperReady = !HelperClient.needsInstall()
                 showToast(error.localizedDescription, .error)
             }

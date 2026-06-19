@@ -31,7 +31,10 @@ func parseEntryBody(_ body: String, enabled: Bool) -> HostEntry? {
 
 func parseHosts(_ raw: String) -> [HostLine] {
     var result: [HostLine] = []
-    for line in raw.components(separatedBy: "\n") {
+    for rawLine in raw.components(separatedBy: "\n") {
+        // Tolerate CRLF files: drop a trailing carriage return so it can't leak
+        // into a hostname or the preserved `raw` line. (.whitespaces excludes \r.)
+        let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { result.append(.blank(UUID())); continue }
         if trimmed.hasPrefix("#") {

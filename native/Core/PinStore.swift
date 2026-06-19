@@ -13,13 +13,25 @@ import Security
 enum PinStore {
     static let minLength = 4
     static let maxLength = 12
-    private static let iterations = 150_000
+    static let maxAttempts = 5
+    private static let iterations = 250_000
 
     private struct Record: Codable { let salt: Data; let hash: Data; let iterations: Int }
+    // Persisted brute-force throttle: consecutive failures and an optional lockout
+    // deadline. Kept beside the PIN digest (0600) so it survives relaunches.
+    private struct Attempts: Codable { var failed: Int; var lockedUntil: Date? }
+
+    // Outcome of a verify attempt: success, a wrong PIN (with attempts remaining
+    // before lockout), or a lockout with the seconds left to wait.
+    enum VerifyResult { case ok, wrong(remaining: Int), lockedOut(seconds: Int) }
 
     private static var path: String {
         (NSHomeDirectory() as NSString)
             .appendingPathComponent("Library/Application Support/HostsEditor/pin.json")
+    }
+    private static var attemptsPath: String {
+        (NSHomeDirectory() as NSString)
+            .appendingPathComponent("Library/Application Support/HostsEditor/pin-attempts.json")
     }
 
     static var isSet: Bool { FileManager.default.fileExists(atPath: path) }
@@ -46,19 +58,68 @@ enum PinStore {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
     }
 
-    static func verify(_ pin: String) -> Bool {
+    static func verify(_ pin: String) -> VerifyResult {
+        var attempts = loadAttempts()
+        // Honor an active lockout; an expired one is cleared but the failure count
+        // is kept so repeated lockouts escalate the backoff.
+        if let until = attempts.lockedUntil {
+            if until > Date() {
+                return .lockedOut(seconds: Int(until.timeIntervalSinceNow.rounded(.up)))
+            }
+            attempts.lockedUntil = nil
+        }
+
         guard let data = FileManager.default.contents(atPath: path),
-              let record = try? JSONDecoder().decode(Record.self, from: data) else { return false }
+              let record = try? JSONDecoder().decode(Record.self, from: data) else {
+            return .wrong(remaining: max(0, maxAttempts - attempts.failed))
+        }
         let candidate = digest(pin, salt: record.salt, rounds: record.iterations)
         // Constant-time compare so verification time doesn't leak how many bytes matched.
-        guard candidate.count == record.hash.count else { return false }
-        var diff: UInt8 = 0
+        var diff: UInt8 = candidate.count == record.hash.count ? 0 : 1
         for (a, b) in zip(candidate, record.hash) { diff |= a ^ b }
-        return diff == 0
+
+        if diff == 0 {
+            saveAttempts(Attempts(failed: 0, lockedUntil: nil))
+            return .ok
+        }
+
+        attempts.failed += 1
+        if attempts.failed >= maxAttempts {
+            let backoff = lockoutSeconds(for: attempts.failed)
+            attempts.lockedUntil = Date().addingTimeInterval(TimeInterval(backoff))
+            saveAttempts(attempts)
+            return .lockedOut(seconds: backoff)
+        }
+        saveAttempts(attempts)
+        return .wrong(remaining: maxAttempts - attempts.failed)
+    }
+
+    // 30s after the first lockout, doubling on each further lockout, capped at 1h.
+    private static func lockoutSeconds(for failed: Int) -> Int {
+        let over = max(0, failed - maxAttempts)
+        return min(30 * (1 << min(over, 7)), 3600)
+    }
+
+    private static func loadAttempts() -> Attempts {
+        guard let data = FileManager.default.contents(atPath: attemptsPath),
+              let a = try? JSONDecoder().decode(Attempts.self, from: data) else {
+            return Attempts(failed: 0, lockedUntil: nil)
+        }
+        return a
+    }
+
+    private static func saveAttempts(_ a: Attempts) {
+        guard let data = try? JSONEncoder().encode(a) else { return }
+        let dir = (attemptsPath as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
+        try? data.write(to: URL(fileURLWithPath: attemptsPath), options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: attemptsPath)
     }
 
     static func clear() {
         try? FileManager.default.removeItem(atPath: path)
+        try? FileManager.default.removeItem(atPath: attemptsPath)
     }
 
     // Salt-prefixed SHA-256, iterated to make brute-forcing a short numeric PIN

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - Shared components
@@ -16,6 +17,8 @@ struct IPBadge: View {
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(k.base.opacity(0.30), lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 7))
             .opacity(enabled ? 1 : 0.85)
+            .accessibilityElement()
+            .accessibilityLabel("IP address \(ip)")
     }
 }
 
@@ -29,6 +32,8 @@ struct SourceChip: View {
             .background(Theme.surface2)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.border, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement()
+            .accessibilityLabel("Source: \(text)")
     }
 }
 
@@ -36,11 +41,14 @@ struct StatusDot: View {
     let status: HostStatus
     private var color: Color { status == .online ? Theme.green : status == .offline ? Theme.red : Theme.textMut }
     private var label: String { status == .online ? "online" : status == .offline ? "offline" : "—" }
+    private var a11yLabel: String { status == .online ? "Reachable" : status == .offline ? "Unreachable" : "Reachability unknown" }
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 7, height: 7)
             Text(label).font(.system(size: 12, weight: .medium)).foregroundColor(status == .na ? Theme.textMut : Theme.text2)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(a11yLabel)
     }
 }
 
@@ -263,7 +271,7 @@ struct BulkBar: View {
                 .buttonStyle(SoftButton())
             Button { store.setEnabled(store.selection, enabled: false) } label: { Label("Disable", systemImage: "minus.circle") }
                 .buttonStyle(SoftButton())
-            Button { store.deleteMany(store.selection) } label: { Label("Delete", systemImage: "trash") }
+            Button { confirmBulkDelete() } label: { Label("Delete", systemImage: "trash") }
                 .buttonStyle(SoftButton(danger: true))
             Divider().frame(height: 22).overlay(Theme.border)
             Button { store.exitSelect() } label: { Text("Done") }.buttonStyle(PrimaryButton())
@@ -274,5 +282,17 @@ struct BulkBar: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border.opacity(0.6), lineWidth: 0.5))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .animation(.easeOut(duration: 0.15), value: store.selection.isEmpty)
+    }
+
+    private func confirmBulkDelete() {
+        let n = store.selection.count
+        guard n > 0 else { return }
+        let alert = NSAlert()
+        alert.messageText = "Delete \(n) \(n == 1 ? "entry" : "entries")?"
+        alert.informativeText = "This removes the selected \(n == 1 ? "entry" : "entries") from /etc/hosts."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+        if alert.runModal() == .alertFirstButtonReturn { store.deleteMany(store.selection) }
     }
 }

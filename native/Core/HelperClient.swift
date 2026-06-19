@@ -1,6 +1,19 @@
 import Darwin
 import Foundation
 
+// MARK: - Write serializer
+
+// Serializes privileged writes and runs them off the main actor. Each call to
+// the daemon is a blocking socket round-trip; funneling every write through one
+// actor guarantees they can't interleave (which could write the file in a stale
+// order or tear a backup) and keeps the blocking IO off the UI thread.
+actor HelperGateway {
+    static let shared = HelperGateway()
+    func write(_ content: String) throws {
+        try HelperClient.write(content: content)
+    }
+}
+
 // MARK: - Privileged helper client
 
 enum HelperClient {
