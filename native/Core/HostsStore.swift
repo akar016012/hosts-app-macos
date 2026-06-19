@@ -353,13 +353,14 @@ final class HostsStore: ObservableObject {
         var groups: [String: Group] = [:]
         for e in entries where e.enabled {
             let family = e.ip.contains(":") ? "v6" : "v4"
-            let system = isSystemDefault(e)
             for name in Set(e.hostnames.map { $0.lowercased() }) {
                 let key = "\(name)|\(family)"
                 var g = groups[key] ?? Group()
                 g.count += 1
                 g.ips.insert(e.ip)
-                if !system { g.user = true }
+                // Classify per hostname, not per entry, so a user alias riding
+                // on a system line (`::1 localhost myhost`) still counts as user.
+                if !isSystemDefaultHost(name, ip: e.ip) { g.user = true }
                 groups[key] = g
             }
         }
