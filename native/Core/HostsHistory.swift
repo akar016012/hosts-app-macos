@@ -56,7 +56,7 @@ enum HistoryStore {
     private static var fileURL: URL { dir.appendingPathComponent("history.json") }
     // Serializes writes and keeps the (potentially large) JSON encode + disk write
     // off the main actor so big hosts files don't stutter the UI on every change.
-    private static let ioQueue = DispatchQueue(label: "com.aditya.hostseditor.history.io")
+    private static let ioQueue = DispatchQueue(label: "com.etchosts.hostseditor.history.io")
 
     static func load() -> [HostSnapshot] {
         guard let data = try? Data(contentsOf: fileURL),
