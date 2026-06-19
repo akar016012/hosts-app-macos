@@ -340,24 +340,32 @@ final class HostsStore: ObservableObject {
     // redundantly on the same IP; either way only the first line takes effect.
     // A hostname mapped to both an IPv4 and an IPv6 address (e.g. localhost on
     // 127.0.0.1 and ::1) is the standard dual-stack default, not a duplicate, so
-    // we key by hostname + family. We dedupe per entry (so `127.0.0.1 a a` on a
-    // single line isn't a "duplicate") and ignore collisions that exist only
-    // among macOS system defaults — a pristine file maps `localhost` to both
-    // `::1` and `fe80::1%lo0` (both IPv6) and must not warn — while still
-    // flagging the moment a user-defined entry joins the collision. Stat hint.
+    // we key by hostname + family, and we dedupe per entry (so `127.0.0.1 a a`
+    // on a single line isn't a "duplicate").
+    //
+    // A collision is benign only when the OS supplies one hostname at several
+    // *distinct* loopback addresses that are all system defaults — a pristine
+    // file maps `localhost` to both `::1` and `fe80::1%lo0` (both IPv6). Anything
+    // else is real: a repeated IP (two identical `127.0.0.1 localhost` lines) or
+    // a user-defined entry joining the collision both still warn. Stat hint.
     var duplicateCount: Int {
-        var entryCount: [String: Int] = [:]
-        var hasUserEntry: [String: Bool] = [:]
+        struct Group { var count = 0; var ips: Set<String> = []; var user = false }
+        var groups: [String: Group] = [:]
         for e in entries where e.enabled {
             let family = e.ip.contains(":") ? "v6" : "v4"
             let system = isSystemDefault(e)
             for name in Set(e.hostnames.map { $0.lowercased() }) {
                 let key = "\(name)|\(family)"
-                entryCount[key, default: 0] += 1
-                if !system { hasUserEntry[key] = true }
+                var g = groups[key] ?? Group()
+                g.count += 1
+                g.ips.insert(e.ip)
+                if !system { g.user = true }
+                groups[key] = g
             }
         }
-        return entryCount.filter { $0.value > 1 && hasUserEntry[$0.key] == true }.count
+        // Real duplicate when a user entry participates, or an IP repeats within
+        // the group (ips.count < count); pure distinct-system collisions are skipped.
+        return groups.values.filter { $0.count > 1 && ($0.user || $0.ips.count < $0.count) }.count
     }
 
     func toggle(_ id: UUID) {
