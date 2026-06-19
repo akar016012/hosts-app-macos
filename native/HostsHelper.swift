@@ -41,7 +41,7 @@ let HELPER_VERSION = "1.0"
 // which the daemon's launching context could otherwise influence to redirect the
 // write target or swap the trust anchor.
 let HOSTS_PATH  = "/etc/hosts"
-let SOCK_PATH   = "/var/run/com.aditya.hostshelper.sock"
+let SOCK_PATH   = "/var/run/com.etchosts.hostshelper.sock"
 let PUBKEY_PATH = "/Library/Application Support/HostsHelper/pubkey"
 let UID_PATH    = "/Library/Application Support/HostsHelper/uid"
 let BACKUP_DIR  = "/Library/Application Support/HostsHelper/backups"
@@ -124,7 +124,7 @@ func peerAuthorized(_ peerUID: uid_t, _ authUID: uid_t?) -> Bool {
 // guarantees that). If our own team can't be determined (e.g. an unsigned/ad-hoc
 // dev build, which SMAppService won't register anyway) there is nothing to pin
 // against, so we fall back to the uid + signature gates rather than brick the app.
-let CLIENT_BUNDLE_ID = "com.aditya.hostseditor"
+let CLIENT_BUNDLE_ID = "com.etchosts.hostseditor"
 
 // getsockopt level/name for a Unix-socket peer's audit token, from <sys/un.h>.
 // Not surfaced by the Swift Darwin overlay, so define the raw values here.

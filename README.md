@@ -125,7 +125,7 @@ The app intentionally keeps runtime state in standard macOS locations:
 
 - `/etc/hosts` — the file being edited. Disabled entries are commented out in
   this file.
-- `~/Library/Preferences/com.aditya.hostseditor.plist` — `UserDefaults` values,
+- `~/Library/Preferences/com.etchosts.hostseditor.plist` — `UserDefaults` values,
   including onboarding completion, local profile name/email, selected theme,
   custom theme data, and the default unlock method.
 - `~/Library/Application Support/HostsEditor/history.json` — in-app change
@@ -136,8 +136,8 @@ The app intentionally keeps runtime state in standard macOS locations:
   private key used to sign write requests sent to the privileged helper.
 
 The helper executable and its launchd plist now live **inside the app bundle**
-(`Contents/MacOS/com.aditya.hostshelper` and
-`Contents/Library/LaunchDaemons/com.aditya.hostshelper.plist`) and are managed by
+(`Contents/MacOS/com.etchosts.hostshelper` and
+`Contents/Library/LaunchDaemons/com.etchosts.hostshelper.plist`) and are managed by
 `SMAppService` — they are no longer copied into `/Library/PrivilegedHelperTools`
 or `/Library/LaunchDaemons`. Moving or deleting the app effectively unregisters
 the daemon. The "Remove Privileged Helper…" item in the **Hosts** menu (or the
@@ -151,7 +151,7 @@ The running helper still keeps root-owned trust state:
   drive the helper.
 - `/Library/Application Support/HostsHelper/backups/` — timestamped backups
   captured before each write.
-- `/var/run/com.aditya.hostshelper.sock` — helper Unix socket.
+- `/var/run/com.etchosts.hostshelper.sock` — helper Unix socket.
 
 ## Restoring a backup
 

@@ -16,7 +16,7 @@ APP_SOURCES=(
 swiftc -O -parse-as-library "${APP_SOURCES[@]}" -o "$BIN"
 
 echo "→ Compiling privileged helper…"
-swiftc -O HostsHelper.swift -o com.aditya.hostshelper
+swiftc -O HostsHelper.swift -o com.etchosts.hostshelper
 
 echo "→ Assembling app bundle…"
 rm -rf "$APP"
@@ -24,16 +24,16 @@ rm -rf "$APP"
 # plist in Contents/Library/LaunchDaemons (managed in-bundle, not /Library).
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchDaemons"
 mv "$BIN" "$APP/Contents/MacOS/$BIN"
-mv com.aditya.hostshelper "$APP/Contents/MacOS/com.aditya.hostshelper"
-chmod +x "$APP/Contents/MacOS/com.aditya.hostshelper"
+mv com.etchosts.hostshelper "$APP/Contents/MacOS/com.etchosts.hostshelper"
+chmod +x "$APP/Contents/MacOS/com.etchosts.hostshelper"
 
-cat > "$APP/Contents/Library/LaunchDaemons/com.aditya.hostshelper.plist" <<DAEMON
+cat > "$APP/Contents/Library/LaunchDaemons/com.etchosts.hostshelper.plist" <<DAEMON
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.aditya.hostshelper</string>
-  <key>BundleProgram</key><string>Contents/MacOS/com.aditya.hostshelper</string>
+  <key>Label</key><string>com.etchosts.hostshelper</string>
+  <key>BundleProgram</key><string>Contents/MacOS/com.etchosts.hostshelper</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardErrorPath</key><string>/var/log/hostshelper.log</string>
@@ -48,7 +48,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>HostsEditor</string>
   <key>CFBundleDisplayName</key><string>Hosts</string>
-  <key>CFBundleIdentifier</key><string>com.aditya.hostseditor</string>
+  <key>CFBundleIdentifier</key><string>com.etchosts.hostseditor</string>
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -94,9 +94,9 @@ SIGN_IDENTITY="${SIGN_IDENTITY:-$( [ -f .signid ] && cat .signid || echo 'Apple 
 echo "→ Signing with: $SIGN_IDENTITY"
 # Helper first (nested code), then the app bundle seals it. Hardened runtime on both.
 # Pin the helper's identifier — codesign otherwise treats ".hostshelper" as a file
-# extension and truncates the identifier to "com.aditya".
-codesign --force --options runtime --identifier com.aditya.hostshelper \
-  --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/com.aditya.hostshelper"
+# extension and truncates the identifier to "com.etchosts".
+codesign --force --options runtime --identifier com.etchosts.hostshelper \
+  --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/com.etchosts.hostshelper"
 codesign --force --options runtime --sign "$SIGN_IDENTITY" "$APP"
 codesign --verify --strict "$APP" && echo "→ Signed & verified"
 

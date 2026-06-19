@@ -279,6 +279,12 @@ struct OnboardingView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { store.refreshHelperStatus() }
+        // The user leaves the app to toggle "Hosts" on in System Settings →
+        // Login Items, then comes back. .onAppear won't fire again on that
+        // return, so re-poll whenever the app regains focus to catch the change.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refreshHelperStatus()
+        }
     }
 
     private func helperBullet(_ icon: String, _ text: String) -> some View {
@@ -371,6 +377,12 @@ struct OnboardingView: View {
                 .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { store.refreshHelperStatus() }
+        // Keep the summary honest if the helper is enabled while this step is up
+        // (e.g. enabled on the previous step, then returned from System Settings).
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refreshHelperStatus()
+        }
     }
 
     // MARK: Progress + footer

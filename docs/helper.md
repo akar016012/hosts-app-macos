@@ -1,7 +1,7 @@
 # The privileged helper: lifecycle, state, and uninstall
 
 Hosts edits `/etc/hosts` through a small root LaunchDaemon called
-`com.aditya.hostshelper`. The app itself never runs as root; the helper is the
+`com.etchosts.hostshelper`. The app itself never runs as root; the helper is the
 only privileged component, and it only writes the hosts file after verifying a
 cryptographically signed request. This document covers how it installs, where it
 keeps state, and how to remove or repair it. For the security rationale see
@@ -10,8 +10,8 @@ keeps state, and how to remove or repair it. For the security rationale see
 ## Install and registration
 
 - The helper executable ships **inside the app bundle** at
-  `Contents/MacOS/com.aditya.hostshelper`, with its launchd plist at
-  `Contents/Library/LaunchDaemons/com.aditya.hostshelper.plist`.
+  `Contents/MacOS/com.etchosts.hostshelper`, with its launchd plist at
+  `Contents/Library/LaunchDaemons/com.etchosts.hostshelper.plist`.
 - It is registered and unregistered through **`SMAppService`** (macOS 13+) —
   there is no install script and no administrator-password prompt for setup.
 - The **first** time the app prepares the helper, macOS leaves the registration
@@ -50,11 +50,11 @@ keeps state, and how to remove or repair it. For the security rationale see
 | `~/Library/Application Support/HostsEditor/history.json` | In-app change history (recent snapshots). |
 
 App preferences (onboarding state, profile, theme, default unlock method) live in
-`~/Library/Preferences/com.aditya.hostseditor.plist`.
+`~/Library/Preferences/com.etchosts.hostseditor.plist`.
 
 **Runtime endpoints:**
 
-- **Socket:** `/var/run/com.aditya.hostshelper.sock` — the Unix domain socket the
+- **Socket:** `/var/run/com.etchosts.hostshelper.sock` — the Unix domain socket the
   app uses to talk to the helper.
 - **Log:** `/var/log/hostshelper.log` — the helper's standard-error log
   (`StandardErrorPath` in the launchd plist). Useful for diagnosing enrollment or
@@ -65,7 +65,7 @@ App preferences (onboarding state, profile, theme, default unlock method) live i
 ```bash
 # Is the daemon registered/enabled? (Also visible in System Settings → Login Items)
 # The app shows this status; from the shell you can probe the socket and log:
-ls -l /var/run/com.aditya.hostshelper.sock
+ls -l /var/run/com.etchosts.hostshelper.sock
 sudo tail -n 50 /var/log/hostshelper.log
 ```
 
@@ -85,7 +85,7 @@ To fully remove the helper and force a clean re-enrollment on next launch:
 
    ```bash
    sudo rm -rf "/Library/Application Support/HostsHelper"
-   sudo rm -f /var/run/com.aditya.hostshelper.sock
+   sudo rm -f /var/run/com.etchosts.hostshelper.sock
    ```
 
    > Back up `/Library/Application Support/HostsHelper/backups/` first if you want
