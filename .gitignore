@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Build intermediates — build.sh compiles these on its way to producing
+# native/HostsEditor.app. They only linger if a build is interrupted.
+/native/HostsEditor
+/native/com.aditya.hostshelper
+/native/AppIcon.iconset/
+*.dSYM/
+
+# Generated app bundle — build.sh produces this; it is a build artifact and is
+# no longer tracked in git. Build it locally with `cd native && ./build.sh`.
+native/HostsEditor.app/
+
+# Test-runner build directory (native/test.sh).
+native/.build-test/
+
+# Local code-signing identity for build.sh (personal — never commit).
+native/.signid
+
+# Xcode / Swift Package Manager (if the project is ever opened in Xcode)
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Node (legacy, kept from the previous web prototype)
+node_modules/
+
+# App-generated /etc/hosts backups
+backups/
+
+# Local scratch notes
+improvements.md
+
+# Editor / tooling local config (never publish)
+.claude/
+.vscode/
+.idea/
