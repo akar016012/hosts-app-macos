@@ -17,7 +17,7 @@ search/filter, preview the raw file, and flush the macOS DNS cache.
 - **Toggle entries on/off** without deleting them (comments the line out).
 - **Add / edit / delete** entries with IP + hostname validation.
 - **Search & filter** by IP, hostname, or comment; filter by active/disabled.
-- **Duplicate detection** — flags a hostname that appears in more than one enabled entry for the same IP version (IPv4/IPv6).
+- **Duplicate detection** — flags a hostname that appears in more than one enabled entry for the same IP version (IPv4/IPv6); the macOS system defaults (e.g. `localhost`) are ignored.
 - **Import / export** an entire hosts file (File menu).
 - **Raw preview** — view the full computed `/etc/hosts` and copy it to the
   clipboard (read-only; edits are made through the structured entry list).

@@ -344,8 +344,8 @@ final class HostsStore: ObservableObject {
     // on a single line isn't a "duplicate").
     //
     // A collision is benign only when the OS supplies one hostname at several
-    // *distinct* loopback addresses that are all system defaults — a pristine
-    // file maps `localhost` to both `::1` and `fe80::1%lo0` (both IPv6). Anything
+    // *distinct* system-default addresses — a pristine file maps `localhost` to
+    // both `::1` (loopback) and `fe80::1%lo0` (link-local), both IPv6. Anything
     // else is real: a repeated IP (two identical `127.0.0.1 localhost` lines) or
     // a user-defined entry joining the collision both still warn. Stat hint.
     var duplicateCount: Int {
