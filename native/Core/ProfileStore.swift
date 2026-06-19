@@ -45,9 +45,4 @@ final class ProfileStore: ObservableObject {
         }
         return letters.isEmpty ? "?" : String(letters).uppercased()
     }
-
-    func signOut() {
-        name = ""
-        email = ""
-    }
 }

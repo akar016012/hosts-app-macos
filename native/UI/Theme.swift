@@ -4,24 +4,46 @@ import SwiftUI
 // MARK: - Colors
 
 extension Color {
+    // Accepts 6-digit RGB ("5b8cff") or 8-digit RGBA ("5b8cffcc"), with or
+    // without a leading "#". Anything else degrades to opaque black.
     init(hex: String) {
-        let s = Scanner(string: hex.replacingOccurrences(of: "#", with: ""))
-        var rgb: UInt64 = 0
-        s.scanHexInt64(&rgb)
-        self.init(.sRGB,
-                  red: Double((rgb >> 16) & 0xFF) / 255,
-                  green: Double((rgb >> 8) & 0xFF) / 255,
-                  blue: Double(rgb & 0xFF) / 255,
-                  opacity: 1)
+        let raw = hex.replacingOccurrences(of: "#", with: "")
+        let s = Scanner(string: raw)
+        var n: UInt64 = 0
+        s.scanHexInt64(&n)
+        let r, g, b, a: Double
+        if raw.count == 8 {
+            r = Double((n >> 24) & 0xFF) / 255
+            g = Double((n >> 16) & 0xFF) / 255
+            b = Double((n >> 8) & 0xFF) / 255
+            a = Double(n & 0xFF) / 255
+        } else {
+            r = Double((n >> 16) & 0xFF) / 255
+            g = Double((n >> 8) & 0xFF) / 255
+            b = Double(n & 0xFF) / 255
+            a = 1
+        }
+        self.init(.sRGB, red: r, green: g, blue: b, opacity: a)
     }
 
-    // Six-digit RGB hex (no leading #), used to persist a custom accent color.
+    // Six-digit RGB hex (no leading #) — used for accents that are always opaque.
     var hexString: String {
         let c = NSColor(self).usingColorSpace(.sRGB) ?? .black
         let r = Int((c.redComponent * 255).rounded())
         let g = Int((c.greenComponent * 255).rounded())
         let b = Int((c.blueComponent * 255).rounded())
         return String(format: "%02x%02x%02x", r, g, b)
+    }
+
+    // Eight-digit RGBA hex — used for tokens where the picker exposes opacity
+    // (soft fills, borders, glow) so transparency round-trips through storage.
+    var hexStringRGBA: String {
+        let c = NSColor(self).usingColorSpace(.sRGB) ?? .black
+        let r = Int((c.redComponent * 255).rounded())
+        let g = Int((c.greenComponent * 255).rounded())
+        let b = Int((c.blueComponent * 255).rounded())
+        let a = Int((c.alphaComponent * 255).rounded())
+        return String(format: "%02x%02x%02x%02x", r, g, b, a)
     }
 
     // Nudge brightness (HSB) while preserving hue/saturation — used to derive the
@@ -37,23 +59,124 @@ extension Color {
 
 // MARK: - Custom theme config
 
-// A user-defined theme: a single accent color over a light or dark base. The
-// structural colors are borrowed from a built-in template (Midnight / Daylight)
-// so contrast stays sane, while everything accent-derived comes from the picked
-// color. Persisted in UserDefaults.
-enum CustomTheme {
-    private static let accentKey = "hosts.custom.accent"
-    private static let lightKey = "hosts.custom.light"
+// Every individually-pickable color in the app. The custom theme starts from a
+// derived default for each token (computed from `basePreset` + `accentHex`) and
+// stores user-chosen colors as overrides keyed by `rawValue`.
+enum ThemeToken: String, CaseIterable, Codable, Hashable {
+    case bg, surface, surface2, headerBg, border
+    case row, rowOff, rowBorder
+    case text, text2, textDim, textMut
+    case accent, accent2, accentSoft, accentBorder, toggleOff, glow
+    case green, red, amber
 
-    static var accentHex: String {
-        get { UserDefaults.standard.string(forKey: accentKey) ?? "5b8cff" }
-        set { UserDefaults.standard.set(newValue, forKey: accentKey) }
+    var label: String {
+        switch self {
+        case .bg: return "Background"
+        case .surface: return "Surface"
+        case .surface2: return "Surface alt"
+        case .headerBg: return "Header bar"
+        case .border: return "Border"
+        case .row: return "Row (on)"
+        case .rowOff: return "Row (off)"
+        case .rowBorder: return "Row divider"
+        case .text: return "Text"
+        case .text2: return "Text secondary"
+        case .textDim: return "Text dim"
+        case .textMut: return "Text muted"
+        case .accent: return "Accent"
+        case .accent2: return "Accent highlight"
+        case .accentSoft: return "Accent soft fill"
+        case .accentBorder: return "Accent border"
+        case .toggleOff: return "Toggle off"
+        case .glow: return "Accent glow"
+        case .green: return "Success"
+        case .red: return "Danger"
+        case .amber: return "Warning"
+        }
     }
-    static var isLight: Bool {
-        get { UserDefaults.standard.bool(forKey: lightKey) }
-        set { UserDefaults.standard.set(newValue, forKey: lightKey) }
+
+    // Tint tokens use alpha; everything else picks an opaque color.
+    var supportsOpacity: Bool {
+        switch self {
+        case .accentSoft, .accentBorder, .glow: return true
+        default: return false
+        }
     }
-    static var accent: Color { Color(hex: accentHex) }
+
+    var group: TokenGroup {
+        switch self {
+        case .bg, .surface, .surface2, .headerBg, .border: return .surfaces
+        case .row, .rowOff, .rowBorder: return .rows
+        case .text, .text2, .textDim, .textMut: return .text
+        case .accent, .accent2, .accentSoft, .accentBorder, .toggleOff, .glow: return .accent
+        case .green, .red, .amber: return .semantic
+        }
+    }
+}
+
+enum TokenGroup: String, CaseIterable, Hashable {
+    case surfaces, rows, text, accent, semantic
+    var label: String {
+        switch self {
+        case .surfaces: return "Surfaces"
+        case .rows: return "Rows"
+        case .text: return "Text"
+        case .accent: return "Accent"
+        case .semantic: return "Semantic"
+        }
+    }
+    var tokens: [ThemeToken] { ThemeToken.allCases.filter { $0.group == self } }
+}
+
+// Persisted custom theme: a structural seed preset + an accent + per-token
+// overrides. Anything the user hasn't touched falls back to a derived default so
+// the theme stays internally consistent.
+struct CustomThemeData: Codable, Equatable {
+    var isLight: Bool = false
+    var accentHex: String = "5b8cff"
+    var basePresetRaw: String = "midnight"
+    var overrides: [String: String] = [:]
+
+    private static let key = "hosts.custom.v2"
+    // Legacy v1 keys, migrated lazily on first read.
+    private static let v1AccentKey = "hosts.custom.accent"
+    private static let v1LightKey = "hosts.custom.light"
+
+    static var current: CustomThemeData {
+        get {
+            if let data = UserDefaults.standard.data(forKey: key),
+               let decoded = try? JSONDecoder().decode(Self.self, from: data) {
+                return decoded
+            }
+            var d = CustomThemeData()
+            if let oldAccent = UserDefaults.standard.string(forKey: v1AccentKey) {
+                d.accentHex = oldAccent
+            }
+            d.isLight = UserDefaults.standard.bool(forKey: v1LightKey)
+            d.basePresetRaw = d.isLight ? AppTheme.daylight.rawValue : AppTheme.midnight.rawValue
+            return d
+        }
+        set {
+            if let encoded = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(encoded, forKey: key)
+            }
+        }
+    }
+
+    // Effective color for a token: user override (if any) else derived default.
+    func color(for token: ThemeToken, defaults: [ThemeToken: Color]) -> Color {
+        if let hex = overrides[token.rawValue] { return Color(hex: hex) }
+        return defaults[token] ?? .black
+    }
+
+    var hasOverride: (ThemeToken) -> Bool { { self.overrides[$0.rawValue] != nil } }
+}
+
+// Backward-compat shim so call sites that only need the accent keep working.
+enum CustomTheme {
+    static var accent: Color { Color(hex: CustomThemeData.current.accentHex) }
+    static var isLight: Bool { CustomThemeData.current.isLight }
+    static var accentHex: String { CustomThemeData.current.accentHex }
 }
 
 // MARK: - Theming
@@ -73,7 +196,8 @@ struct Palette {
          border: Color, row: Color, rowOff: Color, rowBorder: Color,
          text: Color, text2: Color, textDim: Color, textMut: Color,
          accent: Color, accent2: Color, accentSoft: Color, accentBorder: Color,
-         toggleOff: Color, isLight: Bool) {
+         toggleOff: Color, isLight: Bool,
+         green: Color? = nil, red: Color? = nil, amber: Color? = nil) {
         self.bg = bg; self.glow = glow; self.headerBg = headerBg
         self.surface = surface; self.surface2 = surface2; self.border = border
         self.row = row; self.rowOff = rowOff; self.rowBorder = rowBorder
@@ -83,9 +207,10 @@ struct Palette {
 
         // Semantic colors keep their meaning (green = good, red = bad, amber =
         // partial) but are brightness-tuned to a readable contrast vs this bg.
-        self.green = contrastSafe(Color(hex: isLight ? "0f9d6b" : "34d399"), on: bg)
-        self.red   = contrastSafe(Color(hex: isLight ? "dc2626" : "f87171"), on: bg)
-        self.amber = contrastSafe(Color(hex: isLight ? "d97706" : "f5b54a"), on: bg)
+        // Caller can override (custom themes let the user pick these explicitly).
+        self.green = green ?? contrastSafe(Color(hex: isLight ? "0f9d6b" : "34d399"), on: bg)
+        self.red   = red   ?? contrastSafe(Color(hex: isLight ? "dc2626" : "f87171"), on: bg)
+        self.amber = amber ?? contrastSafe(Color(hex: isLight ? "d97706" : "f5b54a"), on: bg)
 
         // Black or white — whichever reads better across the accent gradient
         // (accent2 → accent), maximizing the worst-case contrast over both stops.
@@ -220,21 +345,52 @@ enum AppTheme: String, CaseIterable, Identifiable {
                            accent: a, accent2: Color(hex: "a84e08"), accentSoft: a.opacity(0.10), accentBorder: a.opacity(0.28),
                            toggleOff: Color(hex: "d4b896"), isLight: true)
         case .custom:
-            // Borrow structural tokens from a built-in base of the chosen mode,
-            // then overlay everything accent-derived from the user's color so the
-            // app stays readable regardless of which accent they pick.
-            let a = CustomTheme.accent
-            let light = CustomTheme.isLight
-            let base = (light ? AppTheme.daylight : AppTheme.midnight).palette
-            let a2 = a.brightnessAdjusted(light ? -0.08 : 0.14)
-            return Palette(bg: base.bg, glow: a.opacity(light ? 0.10 : 0.16), headerBg: base.headerBg,
-                           surface: base.surface, surface2: base.surface2, border: base.border,
-                           row: base.row, rowOff: base.rowOff, rowBorder: base.rowBorder,
-                           text: base.text, text2: base.text2, textDim: base.textDim, textMut: base.textMut,
-                           accent: a, accent2: a2, accentSoft: a.opacity(light ? 0.10 : 0.14),
-                           accentBorder: a.opacity(light ? 0.28 : 0.34),
-                           toggleOff: base.toggleOff, isLight: light)
+            return AppTheme.customPalette(from: CustomThemeData.current)
         }
+    }
+
+    // The derived default for every token given a structural base preset, an
+    // accent, and a light/dark mode. The editor uses this for "reset" and the
+    // palette builder uses it as the fallback when there's no user override.
+    static func customDefaults(basePreset: AppTheme,
+                               accent: Color,
+                               isLight light: Bool) -> [ThemeToken: Color] {
+        let base = basePreset.palette
+        let a2 = accent.brightnessAdjusted(light ? -0.08 : 0.14)
+        let green = contrastSafe(Color(hex: light ? "0f9d6b" : "34d399"), on: base.bg)
+        let red   = contrastSafe(Color(hex: light ? "dc2626" : "f87171"), on: base.bg)
+        let amber = contrastSafe(Color(hex: light ? "d97706" : "f5b54a"), on: base.bg)
+        return [
+            .bg: base.bg, .surface: base.surface, .surface2: base.surface2,
+            .headerBg: base.headerBg, .border: base.border,
+            .row: base.row, .rowOff: base.rowOff, .rowBorder: base.rowBorder,
+            .text: base.text, .text2: base.text2, .textDim: base.textDim, .textMut: base.textMut,
+            .accent: accent, .accent2: a2,
+            .accentSoft: accent.opacity(light ? 0.10 : 0.14),
+            .accentBorder: accent.opacity(light ? 0.28 : 0.34),
+            .toggleOff: base.toggleOff,
+            .glow: accent.opacity(light ? 0.10 : 0.16),
+            .green: green, .red: red, .amber: amber
+        ]
+    }
+
+    static func customPalette(from data: CustomThemeData) -> Palette {
+        let basePreset = AppTheme(rawValue: data.basePresetRaw)
+            ?? (data.isLight ? .daylight : .midnight)
+        let accentSeed = Color(hex: data.accentHex)
+        let defaults = customDefaults(basePreset: basePreset,
+                                      accent: accentSeed,
+                                      isLight: data.isLight)
+        let c: (ThemeToken) -> Color = { data.color(for: $0, defaults: defaults) }
+        return Palette(
+            bg: c(.bg), glow: c(.glow), headerBg: c(.headerBg),
+            surface: c(.surface), surface2: c(.surface2), border: c(.border),
+            row: c(.row), rowOff: c(.rowOff), rowBorder: c(.rowBorder),
+            text: c(.text), text2: c(.text2), textDim: c(.textDim), textMut: c(.textMut),
+            accent: c(.accent), accent2: c(.accent2),
+            accentSoft: c(.accentSoft), accentBorder: c(.accentBorder),
+            toggleOff: c(.toggleOff), isLight: data.isLight,
+            green: c(.green), red: c(.red), amber: c(.amber))
     }
 }
 
@@ -263,12 +419,11 @@ final class ThemeStore: ObservableObject {
     }
     var palette: Palette { cachedPalette }
 
-    // Persist a new custom accent/mode and switch to (or refresh) the custom
+    // Persist the custom theme data and switch to (or refresh) the custom
     // theme. Rebuilds the cached palette explicitly because re-selecting `.custom`
     // while it's already active wouldn't trip `theme`'s didSet.
-    func applyCustom(accentHex: String, isLight: Bool) {
-        CustomTheme.accentHex = accentHex
-        CustomTheme.isLight = isLight
+    func applyCustom(_ data: CustomThemeData) {
+        CustomThemeData.current = data
         if theme == .custom {
             cachedPalette = AppTheme.custom.palette
             revision &+= 1

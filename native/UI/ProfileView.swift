@@ -93,13 +93,6 @@ struct ProfileMenu: View {
                     close(); store.setupTouchID()
                 }
             }
-
-            if profile.isSignedIn {
-                divider
-                menuRow("Sign out", icon: "rectangle.portrait.and.arrow.right", danger: true) {
-                    close(); profile.signOut()
-                }
-            }
         }
         .padding(6).frame(width: 256)
         .background(Theme.surface.opacity(0.95))
@@ -298,10 +291,6 @@ struct ProfileEditSheet: View {
             field("EMAIL (OPTIONAL)", text: $email, placeholder: "you@example.com", focused: nil)
 
             HStack {
-                if profile.isSignedIn {
-                    Button("Sign out") { profile.signOut(); dismiss() }
-                        .buttonStyle(SoftButton(danger: true))
-                }
                 Spacer()
                 Button("Cancel") { dismiss() }.buttonStyle(SoftButton())
                 Button("Save") { save() }.buttonStyle(PrimaryButton())
@@ -349,79 +338,296 @@ struct CustomThemeSheet: View {
     @ObservedObject private var themeStore = ThemeStore.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var accent: Color = CustomTheme.accent
-    @State private var isLight = CustomTheme.isLight
+    @State private var data: CustomThemeData = CustomThemeData.current
+    @State private var resetConfirm = false
 
-    // A few tasteful starting points for the color well.
-    private let suggestions = ["5b8cff", "34d399", "a78bfa", "f43f5e", "38bdf8", "fb923c", "f5b54a", "2dd4bf"]
+    // Quick-pick swatches for the seed accent.
+    private let accentSuggestions = ["5b8cff", "34d399", "a78bfa", "f43f5e", "38bdf8", "fb923c", "f5b54a", "2dd4bf"]
+
+    private var seedPreset: AppTheme {
+        AppTheme(rawValue: data.basePresetRaw) ?? (data.isLight ? .daylight : .midnight)
+    }
+
+    private var defaults: [ThemeToken: Color] {
+        AppTheme.customDefaults(basePreset: seedPreset,
+                                accent: Color(hex: data.accentHex),
+                                isLight: data.isLight)
+    }
+
+    // Drawn from local picks so dragging stays smooth and the live app palette
+    // isn't touched until Apply.
+    private var livePalette: Palette { AppTheme.customPalette(from: data) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Custom theme").font(.system(size: 18, weight: .bold)).foregroundColor(Theme.text)
-                Text("Pick an accent color and base — the rest is derived for you.")
-                    .font(.system(size: 12)).foregroundColor(Theme.textDim)
-            }
-
+        VStack(alignment: .leading, spacing: 14) {
+            header
             preview
+            seedRow
+            Divider().background(Theme.border)
+            tokenList
+            footer
+        }
+        .padding(20)
+        .frame(width: 560, height: 720)
+        .background(Theme.surface)
+    }
 
-            HStack(spacing: 12) {
-                ColorPicker(selection: $accent, supportsOpacity: false) {
-                    Text("Accent color").font(.system(size: 13.5, weight: .semibold)).foregroundColor(Theme.text)
+    // MARK: layout pieces
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Custom theme").font(.system(size: 18, weight: .bold)).foregroundColor(Theme.text)
+            Text("Seed from a preset + accent, then override any individual color.")
+                .font(.system(size: 12)).foregroundColor(Theme.textDim)
+        }
+    }
+
+    private var seedRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("Base").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.text2)
+                Picker("", selection: $data.basePresetRaw) {
+                    ForEach(AppTheme.presets) { t in
+                        Text(t.label).tag(t.rawValue)
+                    }
                 }
+                .labelsHidden().pickerStyle(.menu).fixedSize()
+
                 Spacer()
-                Picker("", selection: $isLight) {
+
+                Picker("", selection: $data.isLight) {
                     Text("Dark").tag(false)
                     Text("Light").tag(true)
                 }
                 .labelsHidden().pickerStyle(.segmented).fixedSize()
             }
 
-            // Quick accent suggestions.
-            HStack(spacing: 8) {
-                ForEach(suggestions, id: \.self) { hex in
-                    Button { accent = Color(hex: hex) } label: {
-                        Circle().fill(Color(hex: hex)).frame(width: 22, height: 22)
+            HStack(spacing: 10) {
+                ColorPicker(selection: Binding(
+                    get: { Color(hex: data.accentHex) },
+                    set: { data.accentHex = $0.hexString }
+                ), supportsOpacity: false) {
+                    Text("Seed accent").font(.system(size: 12, weight: .semibold)).foregroundColor(Theme.text2)
+                }
+                Spacer()
+                ForEach(accentSuggestions, id: \.self) { hex in
+                    Button { data.accentHex = hex } label: {
+                        Circle().fill(Color(hex: hex)).frame(width: 18, height: 18)
                             .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .help("#\(hex)")
                 }
-                Spacer()
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }.buttonStyle(SoftButton())
-                Button("Apply") {
-                    themeStore.applyCustom(accentHex: accent.hexString, isLight: isLight)
-                    dismiss()
-                }.buttonStyle(PrimaryButton())
             }
         }
-        .padding(24).frame(width: 420).background(Theme.surface)
     }
 
-    // Mini mock of the header/button drawn from the local picks.
-    private var preview: some View {
-        let base = (isLight ? AppTheme.daylight : AppTheme.midnight).palette
-        let accent2 = accent.brightnessAdjusted(isLight ? -0.08 : 0.14)
-        let grad = LinearGradient(colors: [accent2, accent], startPoint: .topLeading, endPoint: .bottomTrailing)
-        let onAccent: Color = accent.relativeLuminance > 0.5 ? Color(hex: "0b0f14") : .white
-        return HStack(spacing: 12) {
-            Circle().fill(grad).frame(width: 34, height: 34)
-                .overlay(Image(systemName: "person.fill").font(.system(size: 13, weight: .semibold)).foregroundColor(onAccent))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Aa Bb Cc").font(.system(size: 13, weight: .semibold)).foregroundColor(base.text)
-                Text("Accent preview").font(.system(size: 11)).foregroundColor(base.textDim)
+    private var tokenList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(TokenGroup.allCases, id: \.self) { group in
+                    section(for: group)
+                }
             }
-            Spacer()
-            Text("Button").font(.system(size: 12, weight: .bold)).foregroundColor(onAccent)
-                .padding(.horizontal, 14).frame(height: 34)
-                .background(grad).clipShape(RoundedRectangle(cornerRadius: 9))
+            .padding(.trailing, 4)
         }
-        .padding(14)
-        .background(base.surface)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(base.border, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func section(for group: TokenGroup) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(group.label.uppercased())
+                .font(.system(size: 10, weight: .bold)).tracking(0.8)
+                .foregroundColor(Theme.textDim)
+            VStack(spacing: 4) {
+                ForEach(group.tokens, id: \.self) { tok in
+                    tokenRow(tok)
+                }
+            }
+            .padding(8)
+            .background(Theme.surface2)
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.border, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+        }
+    }
+
+    private func tokenRow(_ token: ThemeToken) -> some View {
+        let isOverridden = data.hasOverride(token)
+        let current = data.color(for: token, defaults: defaults)
+        let binding = Binding<Color>(
+            get: { current },
+            set: { newValue in
+                data.overrides[token.rawValue] = token.supportsOpacity
+                    ? newValue.hexStringRGBA
+                    : newValue.hexString
+            }
+        )
+        return HStack(spacing: 10) {
+            // Swatch with a checkerboard underlay so alpha tokens read at a glance.
+            ZStack {
+                if token.supportsOpacity { CheckerboardPattern() }
+                Rectangle().fill(current)
+            }
+            .frame(width: 26, height: 26)
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.border, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(token.label).font(.system(size: 12.5, weight: .semibold)).foregroundColor(Theme.text)
+                Text(token.rawValue).font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundColor(Theme.textDim)
+            }
+
+            Spacer()
+
+            if isOverridden {
+                Button {
+                    data.overrides.removeValue(forKey: token.rawValue)
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Theme.textDim)
+                        .frame(width: 22, height: 22)
+                        .background(Theme.surface)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Theme.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("Reset to derived default")
+            }
+
+            ColorPicker("", selection: binding, supportsOpacity: token.supportsOpacity)
+                .labelsHidden().frame(width: 36)
+        }
+        .padding(.vertical, 3).padding(.horizontal, 4)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            Button {
+                resetConfirm = true
+            } label: {
+                Text("Reset all overrides").font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(data.overrides.isEmpty ? Theme.textMut : Theme.text2)
+            }
+            .buttonStyle(.plain)
+            .disabled(data.overrides.isEmpty)
+            .confirmationDialog("Clear every per-token override?",
+                                isPresented: $resetConfirm) {
+                Button("Clear overrides", role: .destructive) { data.overrides.removeAll() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Tokens will revert to values derived from the base preset + accent.")
+            }
+
+            if !data.overrides.isEmpty {
+                Text("\(data.overrides.count) overridden")
+                    .font(.system(size: 11)).foregroundColor(Theme.textDim)
+            }
+
+            Spacer()
+
+            Button("Cancel") { dismiss() }.buttonStyle(SoftButton())
+            Button("Apply") {
+                themeStore.applyCustom(data)
+                dismiss()
+            }.buttonStyle(PrimaryButton())
+        }
+    }
+
+    // MARK: preview
+
+    // Realistic mock of the header / list rows / button / semantic chips drawn
+    // from the local palette so users see the effect of every pick live.
+    private var preview: some View {
+        let p = livePalette
+        let grad = LinearGradient(colors: [p.accent2, p.accent],
+                                  startPoint: .topLeading, endPoint: .bottomTrailing)
+        return VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Circle().fill(grad).frame(width: 28, height: 28)
+                    .overlay(Image(systemName: "person.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(p.onAccent))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Preview").font(.system(size: 12, weight: .semibold)).foregroundColor(p.text)
+                    Text("hosts.local").font(.system(size: 10)).foregroundColor(p.textDim)
+                }
+                Spacer()
+                Text("Button").font(.system(size: 11, weight: .bold)).foregroundColor(p.onAccent)
+                    .padding(.horizontal, 10).frame(height: 26)
+                    .background(grad)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(p.headerBg)
+            .overlay(Rectangle().fill(p.border).frame(height: 1), alignment: .bottom)
+
+            VStack(spacing: 0) {
+                previewRow("api.example.com", on: true, p: p)
+                Rectangle().fill(p.rowBorder).frame(height: 1)
+                previewRow("staging.disabled", on: false, p: p)
+            }
+
+            HStack(spacing: 8) {
+                chip("OK", color: p.green)
+                chip("Warn", color: p.amber)
+                chip("Fail", color: p.red)
+                Spacer()
+                Text("Aa")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(p.accent)
+                    .padding(.horizontal, 8).frame(height: 22)
+                    .background(p.accentSoft)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(p.accentBorder, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(p.surface2)
+        }
+        .background(p.bg)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(p.border, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func previewRow(_ host: String, on: Bool, p: Palette) -> some View {
+        HStack {
+            Circle().fill(on ? p.accent : p.toggleOff).frame(width: 8, height: 8)
+            Text(host).font(.system(size: 12, weight: on ? .semibold : .regular))
+                .foregroundColor(on ? p.text : p.text2)
+            Spacer()
+            Text(on ? "127.0.0.1" : "—")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(p.textDim)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(on ? p.row : p.rowOff)
+    }
+
+    private func chip(_ label: String, color: Color) -> some View {
+        Text(label).font(.system(size: 10, weight: .bold))
+            .foregroundColor(Theme.readable(on: color))
+            .padding(.horizontal, 7).frame(height: 20)
+            .background(color)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+    }
+}
+
+// Faint two-tone checkerboard rendered behind translucent swatches so alpha
+// reads at a glance.
+private struct CheckerboardPattern: View {
+    var body: some View {
+        Canvas { ctx, size in
+            let tile: CGFloat = 6
+            let cols = Int(ceil(size.width / tile))
+            let rows = Int(ceil(size.height / tile))
+            for r in 0..<rows {
+                for c in 0..<cols where (r + c) % 2 == 0 {
+                    let rect = CGRect(x: CGFloat(c) * tile, y: CGFloat(r) * tile,
+                                      width: tile, height: tile)
+                    ctx.fill(Path(rect), with: .color(.gray.opacity(0.35)))
+                }
+            }
+        }
+        .background(Color.white.opacity(0.85))
     }
 }
