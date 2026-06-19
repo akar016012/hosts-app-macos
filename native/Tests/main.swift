@@ -196,6 +196,14 @@ t.expect(!isSystemDefault(entry("8.8.8.8", ["example.com"])), "isSystemDefault: 
 t.expectEqual(group(for: entry("127.0.0.1", ["localhost"])), HostGroup.system, "group: localhost@127.0.0.1 -> .system")
 t.expectEqual(group(for: entry("255.255.255.255", ["broadcasthost"])), HostGroup.system, "group: broadcasthost -> .system")
 
+// isSystemDefaultHost (per-hostname classification, used by duplicate detection)
+t.expect(isSystemDefaultHost("localhost", ip: "::1"), "isSystemDefaultHost: localhost@::1")
+t.expect(isSystemDefaultHost("LocalHost", ip: "fe80::1%lo0"), "isSystemDefaultHost: case-insensitive")
+t.expect(isSystemDefaultHost("broadcasthost", ip: "255.255.255.255"), "isSystemDefaultHost: broadcasthost")
+t.expect(!isSystemDefaultHost("localhost", ip: "10.0.0.1"), "isSystemDefaultHost: localhost@non-default ip is NOT system")
+t.expect(!isSystemDefaultHost("broadcasthost", ip: "127.0.0.1"), "isSystemDefaultHost: broadcasthost@wrong ip is NOT system")
+t.expect(!isSystemDefaultHost("myhost", ip: "::1"), "isSystemDefaultHost: alias on a system IP is NOT system")
+
 // MARK: - 4. HostSnapshot
 
 t.group("HostSnapshot")

@@ -334,24 +334,39 @@ final class HostsStore: ObservableObject {
         revert(to: history[1])
     }
 
-    // Hostnames that resolve to more than one IP within the same address family
-    // across enabled entries — a likely mistake (first match wins in /etc/hosts).
+    // Hostnames that appear in more than one enabled entry within the same
+    // address family — a likely mistake (first match wins in /etc/hosts).
+    // This covers both a host mapped to conflicting IPs and a host repeated
+    // redundantly on the same IP; either way only the first line takes effect.
     // A hostname mapped to both an IPv4 and an IPv6 address (e.g. localhost on
     // 127.0.0.1 and ::1) is the standard dual-stack default, not a duplicate, so
-    // we key by hostname + family. Surfaced as a stat hint.
+    // we key by hostname + family, and we dedupe per entry (so `127.0.0.1 a a`
+    // on a single line isn't a "duplicate").
+    //
+    // A collision is benign only when the OS supplies one hostname at several
+    // *distinct* system-default addresses — a pristine file maps `localhost` to
+    // both `::1` (loopback) and `fe80::1%lo0` (link-local), both IPv6. Anything
+    // else is real: a repeated IP (two identical `127.0.0.1 localhost` lines) or
+    // a user-defined entry joining the collision both still warn. Stat hint.
     var duplicateCount: Int {
-        var seen: [String: String] = [:]
-        var dupes = Set<String>()
+        struct Group { var count = 0; var ips: Set<String> = []; var user = false }
+        var groups: [String: Group] = [:]
         for e in entries where e.enabled {
             let family = e.ip.contains(":") ? "v6" : "v4"
-            for h in e.hostnames {
-                let name = h.lowercased()
+            for name in Set(e.hostnames.map { $0.lowercased() }) {
                 let key = "\(name)|\(family)"
-                if let ip = seen[key], ip != e.ip { dupes.insert(name) }
-                else if seen[key] == nil { seen[key] = e.ip }
+                var g = groups[key] ?? Group()
+                g.count += 1
+                g.ips.insert(e.ip)
+                // Classify per hostname, not per entry, so a user alias riding
+                // on a system line (`::1 localhost myhost`) still counts as user.
+                if !isSystemDefaultHost(name, ip: e.ip) { g.user = true }
+                groups[key] = g
             }
         }
-        return dupes.count
+        // Real duplicate when a user entry participates, or an IP repeats within
+        // the group (ips.count < count); pure distinct-system collisions are skipped.
+        return groups.values.filter { $0.count > 1 && ($0.user || $0.ips.count < $0.count) }.count
     }
 
     func toggle(_ id: UUID) {
