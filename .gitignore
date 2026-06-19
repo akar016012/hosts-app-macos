@@ -1,4 +1,27 @@
-node_modules/
-backups/
+# macOS
 .DS_Store
+*.swp
+*~
+
+# Build intermediates — build.sh compiles these, then moves them into
+# native/HostsEditor.app (which is intentionally tracked). They only linger if a
+# build is interrupted.
+/native/HostsEditor
+/native/com.aditya.hostshelper
+/native/AppIcon.iconset/
+*.dSYM/
+
+# Xcode / Swift Package Manager (if the project is ever opened in Xcode)
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Node (legacy, kept from the previous web prototype)
+node_modules/
+
+# App-generated /etc/hosts backups
+backups/
+
+# Local scratch notes
 improvements.md
