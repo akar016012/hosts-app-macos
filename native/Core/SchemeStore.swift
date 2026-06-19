@@ -52,7 +52,7 @@ final class SchemeStore: ObservableObject {
             .appendingPathComponent("HostsEditor", isDirectory: true)
     }
     nonisolated private static var fileURL: URL { dir.appendingPathComponent("schemes.json") }
-    private let ioQueue = DispatchQueue(label: "com.aditya.hostseditor.schemes.io")
+    private let ioQueue = DispatchQueue(label: "com.etchosts.hostseditor.schemes.io")
 
     private init() {
         if let data = try? Data(contentsOf: Self.fileURL),

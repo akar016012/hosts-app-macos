@@ -11,8 +11,8 @@ Hosts is split into two components with very different privilege levels:
 - **The app** (`HostsEditor`) runs entirely as the logged-in user. It never runs
   as root. It parses, displays, and edits a working copy of the hosts file, then
   asks the helper to commit the result.
-- **The helper** (`com.aditya.hostshelper`) is a root LaunchDaemon bundled inside
-  the app at `Contents/MacOS/com.aditya.hostshelper`, with its launchd plist at
+- **The helper** (`com.etchosts.hostshelper`) is a root LaunchDaemon bundled inside
+  the app at `Contents/MacOS/com.etchosts.hostshelper`, with its launchd plist at
   `Contents/Library/LaunchDaemons/`. It is registered and unregistered via
   `SMAppService` (macOS 13+) — there is no install script and no admin-password
   prompt for setup; the user approves it once in System Settings → Login Items.
@@ -46,7 +46,7 @@ The helper does not trust the app because of who is talking to it; it trusts a
   the helper resolves the peer's audit token (`LOCAL_PEERTOKEN`), builds a
   `SecCode`, and requires it to satisfy a code requirement pinned to **this
   daemon's own Team Identifier**, the app's bundle identifier
-  (`com.aditya.hostseditor`), and Apple's anchor — i.e. the connecting process must
+  (`com.etchosts.hostseditor`), and Apple's anchor — i.e. the connecting process must
   actually be our signed app. This applies to the first `enroll` too, so an
   unrelated local process can neither plant the trust anchor nor drive writes even
   if it obtained the signing key. Root peers are exempt (already fully privileged);
