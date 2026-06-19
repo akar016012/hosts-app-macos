@@ -26,6 +26,12 @@ permissions:
   contents: read
   security-events: write
 
+# Cancel an in-flight analysis when a newer commit lands on the same ref, so
+# superseded runs don't pile up on the slow macOS runner.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
@@ -49,13 +55,16 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
 
       # Mirror native/build.sh's compile steps (no signing) so CodeQL can trace the
-      # Swift build. Only runs for the swift matrix leg.
+      # Swift build. `-O` is intentionally omitted: whole-module optimization over
+      # the SwiftUI views is extremely slow (it can appear to hang) and is
+      # irrelevant to CodeQL, which only needs to observe compilation. Only runs
+      # for the swift matrix leg.
       - name: Build Swift sources
         if: matrix.build-mode == 'manual'
         working-directory: native
         run: |
-          swiftc -O -parse-as-library HostsEditor.swift Core/*.swift UI/*.swift -o HostsEditor
-          swiftc -O HostsHelper.swift -o com.aditya.hostshelper
+          swiftc -parse-as-library HostsEditor.swift Core/*.swift UI/*.swift -o HostsEditor
+          swiftc HostsHelper.swift -o com.aditya.hostshelper
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
