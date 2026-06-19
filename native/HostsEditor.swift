@@ -17,6 +17,9 @@ enum Helper {
         "com.aditya.hostseditor.signing",
         "com.aditya.hostseditor.session-signing.v2",
     ].map { $0.data(using: .utf8)! }
+    // The session signing private key lives here (0600), NOT in the keychain.
+    static let privateKeyPath = (NSHomeDirectory() as NSString)
+        .appendingPathComponent("Library/Application Support/HostsEditor/session-signing.key")
 }
 
 // MARK: - Colors
@@ -147,26 +150,26 @@ func serializeHosts(_ lines: [HostLine]) -> String {
 // MARK: - Session signing key
 
 enum SigningKey {
-    // NOTE: kSecUseDataProtectionKeychain=false stores the key in the legacy
-    // file-based keychain, which lets an ad-hoc-signed app create a permanent
-    // device-local signing key without the keychain-access-group entitlement
-    // (the data-protection keychain would fail with errSecMissingEntitlement -34018).
+    // The session signing key is an EC P-256 private key persisted as a 0600 file
+    // in the user's Application Support directory — NOT in the keychain. A
+    // keychain-stored key gates each use with an ACL bound to the app's code
+    // signature; for an ad-hoc-signed app that identity changes on every rebuild,
+    // so macOS prompts for the keychain password on every signature. A file-based
+    // key has no ACL and never prompts. Editing is gated by the per-session
+    // Touch ID unlock and the key file's 0600 owner-only permissions.
 
-    static func existing(context: LAContext? = nil) -> SecKey? {
-        var q: [String: Any] = [
-            kSecClass as String: kSecClassKey,
-            kSecAttrApplicationTag as String: Helper.keyTag,
+    static func existing() -> SecKey? {
+        guard let data = FileManager.default.contents(atPath: Helper.privateKeyPath) else { return nil }
+        let attrs: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecReturnRef as String: true,
-            kSecUseDataProtectionKeychain as String: false,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
         ]
-        if let context { q[kSecUseAuthenticationContext as String] = context }
-        var ref: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &ref) == errSecSuccess else { return nil }
-        return (ref as! SecKey)
+        return SecKeyCreateWithData(data as CFData, attrs as CFDictionary, nil)
     }
 
     static func deleteExisting() {
+        try? FileManager.default.removeItem(atPath: Helper.privateKeyPath)
+        // Clean up keys left in the legacy keychain by older builds.
         for tag in [Helper.keyTag] + Helper.legacyKeyTags {
             let q: [String: Any] = [
                 kSecClass as String: kSecClassKey,
@@ -247,18 +250,26 @@ enum SigningKey {
         let attrs: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits as String: 256,
-            kSecUseDataProtectionKeychain as String: false,
-            kSecPrivateKeyAttrs as String: [
-                kSecAttrIsPermanent as String: true,
-                kSecAttrApplicationTag as String: Helper.keyTag,
-                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            ],
         ]
         var err: Unmanaged<CFError>?
         guard let key = SecKeyCreateRandomKey(attrs as CFDictionary, &err) else {
             throw HostsError.failed("Signing key creation failed: \(err!.takeRetainedValue())")
         }
+        guard let data = SecKeyCopyExternalRepresentation(key, &err) as Data? else {
+            throw HostsError.failed("Signing key export failed: \(err!.takeRetainedValue())")
+        }
+        try persist(data)
         return key
+    }
+
+    // Writes the private key bytes to a 0600 file in a 0700 directory.
+    private static func persist(_ data: Data) throws {
+        let dir = (Helper.privateKeyPath as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        try data.write(to: URL(fileURLWithPath: Helper.privateKeyPath), options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600],
+                                              ofItemAtPath: Helper.privateKeyPath)
     }
 
     static func publicKeyData(resetExistingKey: Bool = false) throws -> Data {
@@ -393,7 +404,7 @@ enum HelperClient {
 
         let request: [String: Any] = ["ts": ts, "nonce": nonce, "content": contentB64, "sig": sig]
         let body = try JSONSerialization.data(withJSONObject: request)
-        guard let fd = connect() else { throw HostsError.failed("Helper not running. Re-run setup.") }
+        guard let fd = connect(retries: 6) else { throw HostsError.failed("Helper not running. Re-run setup.") }
         defer { close(fd) }
 
         var payload = body; payload.append(0x0A)
@@ -515,11 +526,6 @@ final class HostsStore: ObservableObject {
         let pendingContent = serializeHosts(lines)
         Task {
             do {
-                guard editingReady, !HelperClient.needsInstall() else {
-                    helperReady = false
-                    lines = snapshot
-                    throw HostsError.failed("Finish launch setup before editing.")
-                }
                 try HelperClient.write(content: pendingContent)
                 load()
                 showToast(successMessage, .ok)
@@ -527,6 +533,9 @@ final class HostsStore: ObservableObject {
                 lines = snapshot
             } catch {
                 lines = snapshot
+                // Re-derive readiness from the actual helper state: a transient
+                // hiccup keeps the session ready, a real loss demotes the UI.
+                helperReady = !HelperClient.needsInstall()
                 showToast(error.localizedDescription, .error)
             }
         }
@@ -559,14 +568,14 @@ final class HostsStore: ObservableObject {
         let pendingContent = text.hasSuffix("\n") ? text : text + "\n"
         Task {
             do {
-                guard editingReady, !HelperClient.needsInstall() else {
-                    helperReady = false
-                    throw HostsError.failed("Finish launch setup before editing.")
-                }
                 try HelperClient.write(content: pendingContent)
                 load(); showToast("File saved", .ok)
             } catch HostsError.cancelled {
-            } catch { lines = snapshot; showToast(error.localizedDescription, .error) }
+            } catch {
+                lines = snapshot
+                helperReady = !HelperClient.needsInstall()
+                showToast(error.localizedDescription, .error)
+            }
         }
     }
 

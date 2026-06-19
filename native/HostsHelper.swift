@@ -96,6 +96,12 @@ func readRequest(_ fd: Int32) -> Data {
 }
 
 func serve() {
+    // Writing a reply to a client that already closed its end (e.g. the app's
+    // isResponding()/needsInstall() probes connect and close without reading)
+    // raises SIGPIPE, whose default action would KILL this daemon. Ignore it so
+    // such writes simply fail with EPIPE and the accept loop keeps running.
+    signal(SIGPIPE, SIG_IGN)
+
     guard let pubKey = loadPublicKey() else { log("no public key; exiting"); exit(1) }
 
     unlink(SOCK_PATH)
@@ -123,6 +129,8 @@ func serve() {
     while true {
         let conn = accept(fd, nil, nil)
         if conn < 0 { continue }
+        var on: Int32 = 1
+        setsockopt(conn, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         let request = readRequest(conn)
         let reply = handle(request, pubKey: pubKey)
         _ = (reply + "\n").withCString { write(conn, $0, strlen($0)) }
