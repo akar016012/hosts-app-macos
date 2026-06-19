@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Aditya Kar
 
+import Darwin
 import Foundation
 
 // MARK: - Parsing
 
+// Validates the address part of an IPv6 string via inet_pton, stripping an optional
+// zone id (e.g. the "%lo0" in fe80::1%lo0), which inet_pton itself doesn't accept.
+// This is stricter and more correct than a loose regex — it rejects malformed
+// pseudo-addresses like ":::" that the old pattern let through.
+func isIPv6(_ s: String) -> Bool {
+    let addr = s.split(separator: "%", maxSplits: 1).first.map(String.init) ?? s
+    var buf = [UInt8](repeating: 0, count: 16)
+    return addr.withCString { inet_pton(AF_INET6, $0, &buf) == 1 }
+}
+
 func looksLikeIP(_ s: String) -> Bool {
-    if s.contains(":") {
-        // IPv6, optionally with a zone id (e.g. fe80::1%lo0). Require at least two
-        // colons so a stray "a:b" doesn't read as an address.
-        guard s.range(of: "^[0-9a-fA-F:]+(%[0-9a-zA-Z]+)?$", options: .regularExpression) != nil else { return false }
-        return s.filter { $0 == ":" }.count >= 2
-    }
+    if s.contains(":") { return isIPv6(s) }
     // IPv4: four dotted octets, each 0–255.
     let octets = s.split(separator: ".", omittingEmptySubsequences: false)
     guard octets.count == 4 else { return false }

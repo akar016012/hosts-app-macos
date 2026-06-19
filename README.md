@@ -108,7 +108,10 @@ profile or lock menu so the helper receives the fresh public key.
   `Contents/Library/LaunchDaemons`, is registered/unregistered via `SMAppService`
   (see `native/Core/ServiceManager.swift`), and only writes `/etc/hosts` after
   validating a request signed by the app's session key. The trusted public key is
-  recorded on first use via an `enroll` message over the helper socket.
+  recorded on first use via an `enroll` message over the helper socket. Before
+  reading any request the helper also verifies, via the peer's audit token, that
+  the connecting process is the app itself — code-signed by the same team as the
+  helper — so the signing key alone is not enough to drive a write.
 - `native/build.sh` — compiles all app sources and the helper, bundles them
   (helper in `Contents/MacOS`, daemon plist in `Contents/Library/LaunchDaemons`),
   generates the icon, and signs the helper and app bundle with a real signing

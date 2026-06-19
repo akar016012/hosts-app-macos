@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Peer code-signature verification in the helper.** Before reading any request,
+  the LaunchDaemon now resolves the peer's audit token (`LOCAL_PEERTOKEN`) and
+  requires the connecting process to be the app itself — code-signed by the same
+  Team Identifier as the helper, with the app's bundle id, chained to Apple's
+  anchor. This applies to first-use enrollment too, so possession of the session
+  signing key is no longer sufficient to drive a privileged write or plant the
+  trust anchor. Root peers are exempt; unsigned/ad-hoc dev builds fall back to the
+  UID + signature gates.
+
+### Added
+
+- **Wire-protocol version negotiation.** Write/enroll requests carry a `protocol`
+  field; the helper rejects a mismatched version with a `protocol_mismatch` code
+  (an absent field is treated as v1 for backward compatibility).
+- **`payload_too_large` helper error.** Oversized requests now return a clear code
+  instead of being misreported as malformed.
+
+### Fixed
+
+- Large hosts files no longer fail silently: the helper's socket read limit was
+  below the advertised 8 MB content limit (base64 inflation pushed real payloads
+  past the cap), truncating big blocklists into a misleading "malformed request".
+  The read limit now sits above the maximum encoded payload.
+- Stricter IPv6 validation: address parsing uses `inet_pton` (with zone-id
+  handling) instead of a loose regex, so malformed pseudo-addresses like `:::` are
+  no longer treated as host entries.
+- Hardened crypto error paths: `CFError` values are no longer force-unwrapped, so a
+  `SecKey`/`SecCode` failure that returns no error object can't crash the app or
+  daemon.
+
+### Changed
+
+- The diff preview's LCS table now uses a flat `Int32` buffer with a tighter line
+  budget, cutting worst-case memory for large scheme diffs by roughly an order of
+  magnitude.
+- Launch auto-unlock now triggers only when Touch ID is the explicitly chosen
+  default, so users who haven't picked a preference aren't surprised by a biometric
+  prompt at startup.
+- `ProfileStore` is now main-actor isolated, consistent with the other stores.
+
 ## [1.0.0] - 2026-06-19
 
 Initial public release (`CFBundleShortVersionString` 1.0). A native macOS

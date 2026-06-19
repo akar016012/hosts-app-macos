@@ -53,7 +53,21 @@ let STATE_PATH  = "/Library/Application Support/HostsHelper/last-ts"
 // bounds memory and rejects absurd payloads.
 let MAX_CONTENT_BYTES = 8_000_000
 
+// Largest request we'll read off the socket before giving up. base64 inflates the
+// content ~33%, so MAX_CONTENT_BYTES bytes become ~10.7MB on the wire; this cap
+// must sit ABOVE that (plus JSON + signature framing) or large-but-legal blocklists
+// would be truncated mid-read and misreported as malformed. Headroom over base64.
+let MAX_REQUEST_BYTES = 12_000_000
+
 func log(_ s: String) { FileHandle.standardError.write(("[hostshelper] " + s + "\n").data(using: .utf8)!) }
+
+// Stringify a CFError without force-unwrapping: SecKey/SecCode APIs are not
+// contractually required to populate the out-error on failure, so a nil error
+// must degrade to a label rather than crash the daemon on an error path.
+func cfErrorString(_ err: Unmanaged<CFError>?) -> String {
+    guard let err else { return "unknown error" }
+    return String(describing: err.takeRetainedValue())
+}
 
 func loadPublicKey() -> SecKey? {
     guard let raw = FileManager.default.contents(atPath: PUBKEY_PATH) else {
@@ -65,7 +79,7 @@ func loadPublicKey() -> SecKey? {
     ]
     var err: Unmanaged<CFError>?
     guard let key = SecKeyCreateWithData(raw as CFData, attrs as CFDictionary, &err) else {
-        log("pubkey import failed: \(err!.takeRetainedValue())"); return nil
+        log("pubkey import failed: \(cfErrorString(err))"); return nil
     }
     return key
 }
@@ -93,6 +107,82 @@ func peerAuthorized(_ peerUID: uid_t, _ authUID: uid_t?) -> Bool {
     // first enroll itself is anchored to the console user in handleEnroll.
     guard let authUID else { return true }
     return peerUID == authUID || peerUID == 0
+}
+
+// MARK: - Peer code-signature validation
+//
+// Beyond getpeereid: require the connecting process to actually be OUR app —
+// signed by the same Team as this daemon, carrying the app's bundle identifier,
+// and chaining to Apple's root. Without this, any program running as the
+// authorized user (e.g. local malware that read the 0600 signing key, or a process
+// racing to win first-enrollment) could drive privileged writes. The check closes
+// that gap, including for the trust-on-first-use enroll.
+//
+// The requirement is self-referential — we pin to THIS daemon's own Team
+// Identifier rather than a hardcoded team — so it holds for any contributor's
+// signing certificate as long as the app and helper are signed together (build.sh
+// guarantees that). If our own team can't be determined (e.g. an unsigned/ad-hoc
+// dev build, which SMAppService won't register anyway) there is nothing to pin
+// against, so we fall back to the uid + signature gates rather than brick the app.
+let CLIENT_BUNDLE_ID = "com.aditya.hostseditor"
+
+// getsockopt level/name for a Unix-socket peer's audit token, from <sys/un.h>.
+// Not surfaced by the Swift Darwin overlay, so define the raw values here.
+let SOL_LOCAL_LEVEL: Int32 = 0
+let LOCAL_PEERTOKEN_OPT: Int32 = 0x006
+
+func peerAuditToken(_ fd: Int32) -> audit_token_t? {
+    var token = audit_token_t()
+    var len = socklen_t(MemoryLayout<audit_token_t>.size)
+    let r = getsockopt(fd, SOL_LOCAL_LEVEL, LOCAL_PEERTOKEN_OPT, &token, &len)
+    guard r == 0, len == socklen_t(MemoryLayout<audit_token_t>.size) else { return nil }
+    return token
+}
+
+func peerSecCode(from token: audit_token_t) -> SecCode? {
+    var tok = token
+    let tokenData = Data(bytes: &tok, count: MemoryLayout<audit_token_t>.size)
+    let attrs = [kSecGuestAttributeAudit: tokenData] as CFDictionary
+    var code: SecCode?
+    return SecCodeCopyGuestWithAttributes(nil, attrs, [], &code) == errSecSuccess ? code : nil
+}
+
+func teamIdentifier(of code: SecCode) -> String? {
+    var staticCode: SecStaticCode?
+    guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess,
+          let staticCode else { return nil }
+    var info: CFDictionary?
+    guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+          let dict = info as? [String: Any] else { return nil }
+    return dict[kSecCodeInfoTeamIdentifier as String] as? String
+}
+
+// This daemon's own Team Identifier, resolved once at startup. nil for ad-hoc /
+// unsigned builds (where there is nothing to pin a peer requirement against).
+let ourTeamID: String? = {
+    var code: SecCode?
+    guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
+    return teamIdentifier(of: code)
+}()
+
+func peerCodeAuthorized(_ fd: Int32, peerUID: uid_t) -> Bool {
+    if peerUID == 0 { return true }   // root is already fully privileged; nothing to pin
+    guard let team = ourTeamID else {
+        log("own team id unavailable (ad-hoc build?); skipping peer code check")
+        return true
+    }
+    guard let token = peerAuditToken(fd), let code = peerSecCode(from: token) else {
+        log("could not obtain peer code; rejecting"); return false
+    }
+    let reqStr = "anchor apple generic and identifier \"\(CLIENT_BUNDLE_ID)\" "
+        + "and certificate leaf[subject.OU] = \"\(team)\""
+    var req: SecRequirement?
+    guard SecRequirementCreateWithString(reqStr as CFString, [], &req) == errSecSuccess, let req else {
+        log("could not build code requirement; rejecting"); return false
+    }
+    let status = SecCodeCheckValidity(code, [], req)
+    if status != errSecSuccess { log("peer failed code requirement (status \(status))") }
+    return status == errSecSuccess
 }
 
 // uid of the user owning the GUI console session (whoever is physically logged in
@@ -291,6 +381,13 @@ func handle(_ requestData: Data, peerUID: uid_t) -> String {
     // Read-only diagnostics — no signature required (exposes no secrets).
     if (obj["cmd"] as? String) == "status" { return handleStatus() }
 
+    // Reject a wire-protocol mismatch loudly rather than silently misparsing a
+    // future format. An absent field means a pre-versioned (v1) client, which is
+    // still v1-compatible, so only a present-and-different version is rejected.
+    if let p = obj["protocol"] as? Int, p != HELPER_PROTOCOL_VERSION {
+        return errReply("protocol_mismatch", "unsupported protocol version \(p)")
+    }
+
     // Writes require a trusted key — until enrolled there is nothing to verify against.
     guard let pubKey = trustedPubKey else { return errReply("not_enrolled", "not enrolled") }
     guard let ts = obj["ts"] as? Int,
@@ -332,7 +429,10 @@ func handle(_ requestData: Data, peerUID: uid_t) -> String {
     return "{\"ok\":true}"
 }
 
-func readRequest(_ fd: Int32) -> Data {
+// Reads one newline-terminated request. `truncated` is true when the peer exceeded
+// MAX_REQUEST_BYTES without sending a terminator, so the caller can return a clear
+// "too large" error instead of letting a half-read payload masquerade as malformed.
+func readRequest(_ fd: Int32) -> (data: Data, truncated: Bool) {
     var buf = [UInt8](repeating: 0, count: 4096)
     var acc = Data()
     while true {
@@ -340,9 +440,9 @@ func readRequest(_ fd: Int32) -> Data {
         if n <= 0 { break }
         acc.append(contentsOf: buf[0..<n])
         if acc.last == 0x0A { break }
-        if acc.count > 5_000_000 { break }
+        if acc.count > MAX_REQUEST_BYTES { return (acc, true) }
     }
-    return acc
+    return (acc, false)
 }
 
 func serve() {
@@ -389,8 +489,14 @@ func serve() {
         guard getpeereid(conn, &pu, &pg) == 0 else { close(conn); continue }
         let peerUID = pu
         guard peerAuthorized(peerUID, authUID) else { close(conn); continue }
-        let request = readRequest(conn)
-        let reply = handle(request, peerUID: peerUID)
+        // Verify the peer is actually our signed app before reading anything from it.
+        guard peerCodeAuthorized(conn, peerUID: peerUID) else {
+            log("rejected peer (code signature) uid=\(peerUID)"); close(conn); continue
+        }
+        let (request, truncated) = readRequest(conn)
+        let reply = truncated
+            ? errReply("payload_too_large", "request too large")
+            : handle(request, peerUID: peerUID)
         _ = (reply + "\n").withCString { write(conn, $0, strlen($0)) }
         close(conn)
     }

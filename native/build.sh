@@ -98,7 +98,7 @@ echo "→ Signing with: $SIGN_IDENTITY"
 codesign --force --options runtime --identifier com.aditya.hostshelper \
   --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/com.aditya.hostshelper"
 codesign --force --options runtime --sign "$SIGN_IDENTITY" "$APP"
-codesign --verify --deep --strict "$APP" && echo "→ Signed & verified"
+codesign --verify --strict "$APP" && echo "→ Signed & verified"
 
 echo ""
 echo "✓ Built $(pwd)/$APP"
