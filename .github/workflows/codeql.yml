@@ -1,9 +1,13 @@
 # CodeQL — static security analysis. Results show up under the repo's Security tab.
 #
-# Swift is the security-sensitive surface (the privileged helper + the app), so it
-# is analyzed with a manual build that runs the same `swiftc` invocations as
-# native/build.sh, minus the code-signing step (signing is irrelevant to analysis
-# and would need certificates CI doesn't have).
+# Swift is analyzed with a manual, compile-only build (no signing — irrelevant to
+# analysis). It deliberately builds only the security-sensitive code: the
+# privileged helper (HostsHelper.swift) and the Core logic (signing, PIN, helper
+# client, parsing, stores). The SwiftUI views under UI/ are intentionally excluded:
+# they compile fine locally (~22s) but CodeQL's Swift extractor stalls for tens of
+# minutes on those view bodies on the hosted macOS runner. Skipping UI/ — the least
+# security-relevant layer — keeps the scan fast and reliable while still covering
+# every code path that touches the privilege boundary, crypto, and untrusted input.
 #
 # A javascript-typescript leg is intentionally omitted: there is no JS/TS in the
 # tracked repo yet (web/ and remotion/ are not committed), and CodeQL hard-fails
@@ -54,17 +58,18 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
-      # Mirror native/build.sh's compile steps (no signing) so CodeQL can trace the
-      # Swift build. `-O` is intentionally omitted: whole-module optimization over
-      # the SwiftUI views is extremely slow (it can appear to hang) and is
-      # irrelevant to CodeQL, which only needs to observe compilation. Only runs
-      # for the swift matrix leg.
-      - name: Build Swift sources
+      # Compile-only (-c) so CodeQL can trace the build without needing a link step
+      # or signing. Helper + Core only; UI/ is excluded (see header). `-O` is
+      # omitted — it's irrelevant to analysis and only slows the type-checker.
+      # A step timeout bounds any surprise extractor stall to fast feedback instead
+      # of the 60-minute job cap.
+      - name: Build Swift sources (helper + Core)
         if: matrix.build-mode == 'manual'
         working-directory: native
+        timeout-minutes: 20
         run: |
-          swiftc -parse-as-library HostsEditor.swift Core/*.swift UI/*.swift -o HostsEditor
-          swiftc HostsHelper.swift -o com.aditya.hostshelper
+          swiftc -c HostsHelper.swift -module-name HostsHelper
+          swiftc -c -parse-as-library Core/*.swift -module-name HostsCore
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
