@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#4f7cff"/>
+  <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round">
+    <!-- network / hosts glyph: a central node linked to three dots -->
+    <circle cx="256" cy="256" r="46" fill="#ffffff" stroke="none"/>
+    <circle cx="140" cy="140" r="30" fill="#ffffff" stroke="none"/>
+    <circle cx="372" cy="140" r="30" fill="#ffffff" stroke="none"/>
+    <circle cx="256" cy="392" r="30" fill="#ffffff" stroke="none"/>
+    <line x1="256" y1="256" x2="140" y2="140"/>
+    <line x1="256" y1="256" x2="372" y2="140"/>
+    <line x1="256" y1="256" x2="256" y2="392"/>
+  </g>
+</svg>
