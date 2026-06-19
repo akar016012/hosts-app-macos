@@ -93,6 +93,12 @@ struct ProfileMenu: View {
                     close(); store.setupTouchID()
                 }
             }
+
+            divider
+
+            menuRow("Replay welcome tour", icon: "sparkles") {
+                close(); OnboardingStore.shared.replay()
+            }
         }
         .padding(6).frame(width: 256)
         .background(Theme.surface.opacity(0.95))

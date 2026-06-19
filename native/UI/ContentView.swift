@@ -6,6 +6,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var store = HostsStore()
     @ObservedObject private var themeStore = ThemeStore.shared
+    @ObservedObject private var onboarding = OnboardingStore.shared
     @State private var search = ""
     @State private var filter: Filter = .all
     @State private var editorEntry: HostEntry? = nil
@@ -56,6 +57,11 @@ struct ContentView: View {
             if let toast = store.toast {
                 toastView(toast).padding(.bottom, store.selectMode ? 88 : 24)
             }
+            if !onboarding.completed {
+                OnboardingView(store: store)
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
         .id("\(activeTheme.rawValue)-\(themeStore.revision)")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -67,10 +73,15 @@ struct ContentView: View {
             guard !didRunInitialSetup else { return }
             didRunInitialSetup = true
             store.load()
-            store.autoUnlockIfPreferred()
         }
         .onReceive(themeStore.$theme) { newTheme in
             applyThemeAppearance(newTheme)
+        }
+        // Auto-unlock only once onboarding is done — this fires with the current
+        // value on appear (covering returning users) and again when the walkthrough
+        // finishes, so the launch Touch ID prompt never appears behind the overlay.
+        .onReceive(onboarding.$completed) { done in
+            if done { store.autoUnlockIfPreferred() }
         }
         .sheet(isPresented: $showingEditor) {
             EntryEditor(entry: editorEntry) { ip, hosts, comment, enabled in

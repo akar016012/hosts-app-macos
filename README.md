@@ -10,7 +10,9 @@ macOS DNS cache.
 - **Add / edit / delete** entries with IP + hostname validation.
 - **Search & filter** by IP, hostname, or comment; filter by active/disabled.
 - **Raw editor** for direct edits to the whole file.
-- **Touch ID session unlock** for edits through a privileged helper.
+- **Touch ID or PIN session unlock** for edits through a privileged helper.
+- **Change history** with one-click revert to earlier `/etc/hosts` snapshots.
+- **Profile and appearance controls** with built-in themes and a custom theme editor.
 - **Automatic backups** — a timestamped copy is saved before every write.
 - **Flush DNS** button (macOS).
 - No web server, browser UI, Node.js, or npm dependencies.
@@ -32,31 +34,62 @@ Open the app from Finder, or run:
 open native/HostsEditor.app
 ```
 
-The app asks for Touch ID when it launches. After that, edits stay unlocked for
-the rest of that app session and do not ask for your fingerprint again.
+On first launch, the app shows a welcome tour where you can set a local profile,
+pick a theme, and choose how edits unlock. Returning users unlock the edit
+session with Touch ID or an app PIN; edits stay unlocked for the rest of that
+app session.
 
 During launch/setup, the app may also install or refresh a privileged helper
 with the native macOS administrator prompt. Editing controls stay disabled until
 this setup is complete, and edits do not trigger helper installation prompts.
 
-Touch ID must be available and enrolled on the Mac. If you add or remove
-fingerprints in System Settings, click the Touch ID control in the app to reset
-approvals and create a fresh session signing key.
+Touch ID must be available and enrolled on the Mac for Touch ID unlock. If you
+add or remove fingerprints in System Settings, reset the session key from the
+profile or lock menu so the helper receives the fresh public key.
 
 ## How it works
 
 - `native/HostsEditor.swift` — the SwiftUI app entry point.
-- `native/Core/` — app state, parsing, host grouping, Touch ID session signing,
-  and privileged-helper communication.
+- `native/Core/` — app state, parsing, host grouping, session signing, local
+  history, and privileged-helper communication.
 - `native/UI/` — SwiftUI screens, sheets, row components, themes, and button
   styles.
 - `native/HostsHelper.swift` — the privileged LaunchDaemon helper. It only
-  writes `/etc/hosts` after validating a request signed by the app's Secure
-  session key.
+  writes `/etc/hosts` after validating a request signed by the app's session
+  key.
 - `native/build.sh` — compiles all app sources and the helper, bundles them,
   generates the icon, and ad-hoc signs the app bundle.
 
 Disabled entries are stored as commented-out lines.
+
+## Stored data and config
+
+The app intentionally keeps runtime state in standard macOS locations:
+
+- `/etc/hosts` — the file being edited. Disabled entries are commented out in
+  this file.
+- `~/Library/Preferences/com.aditya.hostseditor.plist` — `UserDefaults` values,
+  including onboarding completion, local profile name/email, selected theme,
+  custom theme data, and the default unlock method.
+- `~/Library/Application Support/HostsEditor/history.json` — in-app change
+  history, capped at the most recent 50 snapshots.
+- `~/Library/Application Support/HostsEditor/pin.json` — salted, iterated PIN
+  digest for PIN unlock. The PIN itself is never stored.
+- `~/Library/Application Support/HostsEditor/session-signing.key` — owner-only
+  private key used to sign write requests sent to the privileged helper.
+
+The privileged helper also keeps root-owned install and trust state:
+
+- `/Library/PrivilegedHelperTools/com.aditya.hostshelper` — installed helper
+  executable.
+- `/Library/LaunchDaemons/com.aditya.hostshelper.plist` — LaunchDaemon plist.
+- `/Library/Application Support/HostsHelper/pubkey` — public key trusted by the
+  helper.
+- `/Library/Application Support/HostsHelper/uid` — local user ID allowed to
+  drive the helper.
+- `/Library/Application Support/HostsHelper/backups/` — timestamped backups
+  captured before each write.
+- `/var/run/com.aditya.hostshelper.sock` — helper Unix socket.
 
 ## Restoring a backup
 
