@@ -8,7 +8,12 @@ APP="HostsEditor.app"
 BIN="HostsEditor"
 
 echo "→ Compiling app…"
-swiftc -O -parse-as-library HostsEditor.swift -o "$BIN"
+APP_SOURCES=(
+  HostsEditor.swift
+  Core/*.swift
+  UI/*.swift
+)
+swiftc -O -parse-as-library "${APP_SOURCES[@]}" -o "$BIN"
 
 echo "→ Compiling privileged helper…"
 swiftc -O HostsHelper.swift -o com.aditya.hostshelper

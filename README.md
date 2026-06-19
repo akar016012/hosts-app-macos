@@ -45,13 +45,16 @@ approvals and create a fresh session signing key.
 
 ## How it works
 
-- `native/HostsEditor.swift` — the SwiftUI app. It parses `/etc/hosts`,
-  preserves comments and blank lines, and signs write requests.
+- `native/HostsEditor.swift` — the SwiftUI app entry point.
+- `native/Core/` — app state, parsing, host grouping, Touch ID session signing,
+  and privileged-helper communication.
+- `native/UI/` — SwiftUI screens, sheets, row components, themes, and button
+  styles.
 - `native/HostsHelper.swift` — the privileged LaunchDaemon helper. It only
   writes `/etc/hosts` after validating a request signed by the app's Secure
   session key.
-- `native/build.sh` — compiles the app and helper, bundles them, generates the
-  icon, and ad-hoc signs the app bundle.
+- `native/build.sh` — compiles all app sources and the helper, bundles them,
+  generates the icon, and ad-hoc signs the app bundle.
 
 Disabled entries are stored as commented-out lines.
 
