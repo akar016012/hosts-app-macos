@@ -4,8 +4,10 @@
 version: 2
 updates:
   # GitHub Actions used by workflows in .github/workflows.
+  # target-branch keeps version-bump PRs on develop (git-flow), not main.
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     commit-message:
@@ -17,6 +19,7 @@ updates:
   # remotion/ is committed; Dependabot ignores entries whose manifest is absent.
   - package-ecosystem: "npm"
     directory: "/remotion"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     commit-message:
