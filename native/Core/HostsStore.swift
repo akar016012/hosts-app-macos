@@ -334,24 +334,23 @@ final class HostsStore: ObservableObject {
         revert(to: history[1])
     }
 
-    // Hostnames that resolve to more than one IP within the same address family
-    // across enabled entries — a likely mistake (first match wins in /etc/hosts).
+    // Hostnames that appear in more than one enabled entry within the same
+    // address family — a likely mistake (first match wins in /etc/hosts).
+    // This covers both a host mapped to conflicting IPs and a host repeated
+    // redundantly on the same IP; either way only the first line takes effect.
     // A hostname mapped to both an IPv4 and an IPv6 address (e.g. localhost on
     // 127.0.0.1 and ::1) is the standard dual-stack default, not a duplicate, so
     // we key by hostname + family. Surfaced as a stat hint.
     var duplicateCount: Int {
-        var seen: [String: String] = [:]
-        var dupes = Set<String>()
+        var counts: [String: Int] = [:]
         for e in entries where e.enabled {
             let family = e.ip.contains(":") ? "v6" : "v4"
             for h in e.hostnames {
-                let name = h.lowercased()
-                let key = "\(name)|\(family)"
-                if let ip = seen[key], ip != e.ip { dupes.insert(name) }
-                else if seen[key] == nil { seen[key] = e.ip }
+                let key = "\(h.lowercased())|\(family)"
+                counts[key, default: 0] += 1
             }
         }
-        return dupes.count
+        return counts.values.filter { $0 > 1 }.count
     }
 
     func toggle(_ id: UUID) {
