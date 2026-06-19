@@ -1,5 +1,77 @@
 import SwiftUI
 
+// MARK: - Reusable avatar
+
+// Renders the profile picture when one is set, otherwise the gradient initials
+// (or a generic glyph when there's no name yet). Always clipped to a circle so
+// every call site stays consistent.
+struct ProfileAvatar: View {
+    let image: NSImage?
+    let initials: String   // empty -> show the generic person glyph
+    var size: CGFloat
+    var font: CGFloat
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else {
+                Circle().fill(LinearGradient.accentFill)
+                if initials.isEmpty {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: font, weight: .semibold))
+                        .foregroundColor(Theme.onAccent.opacity(0.9))
+                } else {
+                    Text(initials)
+                        .font(.system(size: font, weight: .bold))
+                        .foregroundColor(Theme.onAccent)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+}
+
+// MARK: - Avatar editor
+
+// An avatar with a camera badge that opens a menu to choose or remove the
+// profile picture. Drives a draft NSImage binding so the choice can be committed
+// (or discarded) by the surrounding sheet/flow.
+struct AvatarEditor: View {
+    @Binding var image: NSImage?
+    let initials: String
+    var size: CGFloat
+    var font: CGFloat
+
+    var body: some View {
+        ProfileAvatar(image: image, initials: initials, size: size, font: font)
+            .overlay(Circle().stroke(.white.opacity(0.12), lineWidth: 1))
+            .overlay(alignment: .bottomTrailing) {
+                Menu {
+                    Button(image == nil ? "Choose photo…" : "Change photo…") {
+                        if let picked = AvatarPicker.pick() { image = picked }
+                    }
+                    if image != nil {
+                        Button("Remove photo", role: .destructive) { image = nil }
+                    }
+                } label: {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: size * 0.26, weight: .semibold))
+                        .foregroundColor(Theme.onAccent)
+                        .frame(width: size * 0.42, height: size * 0.42)
+                        .background(Circle().fill(LinearGradient.accentFill))
+                        .overlay(Circle().stroke(Theme.surface, lineWidth: 2))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Change profile picture")
+                .offset(x: size * 0.06, y: size * 0.06)
+            }
+    }
+}
+
 // MARK: - Profile badge (header avatar)
 
 // The round initials avatar shown at the end of the header. Click to open the
@@ -40,17 +112,9 @@ struct ProfileBadge: View {
 
     @ViewBuilder
     private func avatar(size: CGFloat, font: CGFloat) -> some View {
-        ZStack {
-            Circle().fill(LinearGradient.accentFill)
-            if profile.isSignedIn {
-                Text(profile.initials)
-                    .font(.system(size: font, weight: .bold)).foregroundColor(Theme.onAccent)
-            } else {
-                Image(systemName: "person.fill")
-                    .font(.system(size: font, weight: .semibold)).foregroundColor(Theme.onAccent.opacity(0.9))
-            }
-        }
-        .frame(width: size, height: size)
+        ProfileAvatar(image: profile.avatar,
+                      initials: profile.isSignedIn ? profile.initials : "",
+                      size: size, font: font)
     }
 }
 
@@ -110,15 +174,9 @@ struct ProfileMenu: View {
     private var identityHeader: some View {
         Button { present { showProfileEdit = true } } label: {
             HStack(spacing: 11) {
-                ZStack {
-                    Circle().fill(LinearGradient.accentFill)
-                    if profile.isSignedIn {
-                        Text(profile.initials).font(.system(size: 15, weight: .bold)).foregroundColor(Theme.onAccent)
-                    } else {
-                        Image(systemName: "person.fill").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.onAccent.opacity(0.9))
-                    }
-                }
-                .frame(width: 42, height: 42)
+                ProfileAvatar(image: profile.avatar,
+                              initials: profile.isSignedIn ? profile.initials : "",
+                              size: 42, font: 15)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.isSignedIn ? profile.trimmedName : "Set up your profile")
                         .font(.system(size: 14.5, weight: .bold)).foregroundColor(Theme.text)
@@ -270,21 +328,13 @@ struct ProfileEditSheet: View {
 
     @State private var name = ""
     @State private var email = ""
+    @State private var avatar: NSImage?
     @FocusState private var nameFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 11) {
-                ZStack {
-                    Circle().fill(LinearGradient.accentFill)
-                    let preview = previewInitials
-                    if preview.isEmpty {
-                        Image(systemName: "person.fill").font(.system(size: 18, weight: .semibold)).foregroundColor(Theme.onAccent.opacity(0.9))
-                    } else {
-                        Text(preview).font(.system(size: 18, weight: .bold)).foregroundColor(Theme.onAccent)
-                    }
-                }
-                .frame(width: 52, height: 52)
+            HStack(spacing: 13) {
+                AvatarEditor(image: $avatar, initials: previewInitials, size: 52, font: 18)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(profile.isSignedIn ? "Edit profile" : "Set up your profile")
                         .font(.system(size: 18, weight: .bold)).foregroundColor(Theme.text)
@@ -303,7 +353,7 @@ struct ProfileEditSheet: View {
             }
         }
         .padding(24).frame(width: 420).background(Theme.surface)
-        .onAppear { name = profile.name; email = profile.email; nameFocused = true }
+        .onAppear { name = profile.name; email = profile.email; avatar = profile.avatar; nameFocused = true }
     }
 
     private var previewInitials: String {
@@ -316,6 +366,7 @@ struct ProfileEditSheet: View {
     private func save() {
         profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        if avatar !== profile.avatar { profile.setAvatar(avatar) }
         dismiss()
     }
 

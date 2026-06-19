@@ -78,6 +78,7 @@ struct OnboardingView: View {
     // Profile draft
     @State private var name = ""
     @State private var email = ""
+    @State private var avatar: NSImage?
     @FocusState private var nameFocused: Bool
 
     // PIN draft (optional)
@@ -102,7 +103,7 @@ struct OnboardingView: View {
                 .shadow(color: .black.opacity(0.35), radius: 40, y: 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { name = profile.name; email = profile.email }
+        .onAppear { name = profile.name; email = profile.email; avatar = profile.avatar }
     }
 
     private var card: some View {
@@ -196,7 +197,10 @@ struct OnboardingView: View {
 
     private var profileContent: some View {
         HStack(alignment: .top, spacing: 18) {
-            avatarPreview
+            VStack(spacing: 8) {
+                AvatarEditor(image: $avatar, initials: previewInitials, size: 64, font: 22)
+                Text("Add a photo").font(.system(size: 11)).foregroundColor(Theme.textDim)
+            }
             VStack(spacing: 12) {
                 onboardField("NAME", text: $name, placeholder: "Your name", focused: $nameFocused)
                 onboardField("EMAIL (OPTIONAL)", text: $email, placeholder: "you@example.com", focused: nil)
@@ -330,6 +334,7 @@ struct OnboardingView: View {
         case .profile:
             profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
             profile.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            if avatar !== profile.avatar { profile.setAvatar(avatar) }
         case .security:
             if !commitPINIfNeeded() { return }   // validation failed; stay put
         default:
@@ -356,20 +361,6 @@ struct OnboardingView: View {
     }
 
     // MARK: Building blocks
-
-    private var avatarPreview: some View {
-        ZStack {
-            Circle().fill(LinearGradient.accentFill)
-            let preview = previewInitials
-            if preview.isEmpty {
-                Image(systemName: "person.fill").font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(Theme.onAccent.opacity(0.9))
-            } else {
-                Text(preview).font(.system(size: 22, weight: .bold)).foregroundColor(Theme.onAccent)
-            }
-        }
-        .frame(width: 64, height: 64)
-    }
 
     private var previewInitials: String {
         let words = name.trimmingCharacters(in: .whitespaces).split(whereSeparator: { $0 == " " || $0 == "-" })
