@@ -40,3 +40,9 @@ improvements.md
 .vscode/
 .idea/
 docs/FEATURES.md
+
+# Local Developer ID identity for release.sh (personal — never commit).
+native/.devid
+# Release artifacts produced by native/release.sh.
+native/*.dmg
+native/*.zip

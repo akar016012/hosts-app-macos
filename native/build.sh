@@ -6,6 +6,10 @@ cd "$(dirname "$0")"
 
 APP="HostsEditor.app"
 BIN="HostsEditor"
+# Version stamped into Info.plist. Defaults to 1.0 for local dev builds;
+# release.sh overrides it with the release version so the bundle, DMG name,
+# and CHANGELOG/tag stay in sync.
+APP_VERSION="${APP_VERSION:-1.0}"
 
 echo "→ Compiling app…"
 APP_SOURCES=(
@@ -49,8 +53,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>HostsEditor</string>
   <key>CFBundleDisplayName</key><string>Hosts</string>
   <key>CFBundleIdentifier</key><string>com.etchosts.hostseditor</string>
-  <key>CFBundleVersion</key><string>1.0</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>$APP_VERSION</string>
+  <key>CFBundleShortVersionString</key><string>$APP_VERSION</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>HostsEditor</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -92,12 +96,15 @@ rm -rf "$ICONSET"
 #   3. placeholder                  (so the repo never ships a personal identity)
 SIGN_IDENTITY="${SIGN_IDENTITY:-$( [ -f .signid ] && cat .signid || echo 'Apple Development: you@example.com (TEAMID)' )}"
 echo "→ Signing with: $SIGN_IDENTITY"
+# A secure timestamp is required for notarization but needs network and slows
+# local dev builds, so it is opt-in: release.sh sets RELEASE=1 to enable it.
+TS_FLAG=""; [ -n "${RELEASE:-}" ] && TS_FLAG="--timestamp"
 # Helper first (nested code), then the app bundle seals it. Hardened runtime on both.
 # Pin the helper's identifier — codesign otherwise treats ".hostshelper" as a file
 # extension and truncates the identifier to "com.etchosts".
-codesign --force --options runtime --identifier com.etchosts.hostshelper \
+codesign --force --options runtime $TS_FLAG --identifier com.etchosts.hostshelper \
   --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/com.etchosts.hostshelper"
-codesign --force --options runtime --sign "$SIGN_IDENTITY" "$APP"
+codesign --force --options runtime $TS_FLAG --sign "$SIGN_IDENTITY" "$APP"
 codesign --verify --strict "$APP" && echo "→ Signed & verified"
 
 echo ""
