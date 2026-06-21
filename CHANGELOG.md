@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Notarized `.dmg` distribution.** Hosts is now downloadable as a signed,
+  Developer ID–notarized, stapled disk image (drag-to-Applications, no Gatekeeper
+  wall, works offline on first launch) alongside the build-from-source path. Added
+  `native/release.sh`, which builds with a secure timestamp, notarizes both the app
+  and the DMG, staples each, and emits a stable-named `HostsEditor.dmg` so the
+  website's download button tracks the latest GitHub release with no edits.
+
+### Changed
+
+- `native/build.sh` now stamps the bundle version from `APP_VERSION` (defaults to
+  `1.0`; release builds derive it from the git tag) and adds a secure `--timestamp`
+  to signatures when `RELEASE=1`, as required for notarization.
+
 ## [1.0.3] - 2026-06-19
 
 ### Fixed
