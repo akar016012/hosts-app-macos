@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-06-19
+
+### Fixed
+
+- Onboarding's helper step now reflects approval after the user returns from
+  System Settings: status was only re-read in `.onAppear`, which doesn't fire on
+  refocus, so enabling "Hosts" in Login Items left the step (and the "You're all
+  set" summary) stuck on "Helper not enabled". Both steps now re-poll on
+  `didBecomeActive`.
+- Duplicate-hostname detection now counts a hostname repeated across enabled
+  entries on the same IP, not just one mapped to conflicting IPs — so the
+  "N duplicate hosts" warning no longer silently shows nothing for the common
+  case. Collisions among macOS system defaults (e.g. `localhost` on `::1` and
+  `fe80::1%lo0`) stay exempt until a user-defined entry is involved.
+
+### Changed
+
+- Renamed the app and helper bundle-identifier prefix from `com.aditya.*` to
+  `com.etchosts.*` across code, build, and docs, so the shipping identifiers no
+  longer carry a personal namespace. Includes the keychain key tags (with legacy
+  tags retained for migration), the launchd plist, `CFBundleIdentifier`, and the
+  pinned `codesign --identifier`.
+- Bumped the main window's minimum height from 600 to 720 for more editor room
+  on launch.
+
+## [1.0.2] - 2026-06-19
+
 ### Security
 
 - **Peer code-signature verification in the helper.** Before reading any request,
@@ -88,5 +115,8 @@ SwiftUI app for viewing and editing `/etc/hosts`.
   control-character rejection, replay protection (timestamps + persisted nonce
   set), and a defense-in-depth peer check in the helper.
 
-[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/akar016012/hosts-app-macos/releases/tag/v1.0.0
