@@ -1,9 +1,11 @@
 # Build Hosts yourself with your own Apple signing identity
 
-> **Interim install path.** Until Hosts ships as a signed, notarized download, you
-> run it by building it from source and signing it with your **own free Apple
-> signing certificate**. This takes about five minutes and needs only a free Apple
-> ID — no paid Apple Developer Program membership.
+> **Optional — building from source is an alternative to the download.** Hosts now
+> ships as a [signed, notarized `.dmg`](https://etc-hosts.com/#install) you can
+> drag-and-drop install with no Xcode. This guide is for people who'd rather build
+> it themselves and sign it with their **own free Apple signing certificate** — it
+> takes about five minutes and needs only a free Apple ID, no paid Apple Developer
+> Program membership.
 
 ## Why you sign it yourself
 
@@ -15,9 +17,9 @@ helper if the app bundle is signed with a **real** (non-ad-hoc) certificate.
   Apple ID's "Personal Team" — is enough to build and run Hosts on your own Mac.
 - Because you build it locally, **Gatekeeper doesn't block it**: there's no
   "unidentified developer" wall and nothing to notarize.
-- A paid **Developer ID** certificate + notarization would only be needed to hand
-  a prebuilt `.app` to *other* people who don't build it themselves. This project
-  is distributed as source, so that isn't required — you build your own copy.
+- A paid **Developer ID** certificate + notarization is what produces the prebuilt
+  `.dmg` download for *other* people (built by [`native/release.sh`](../native/release.sh)).
+  Building your own copy from source doesn't require it.
 
 ## Prerequisites
 

@@ -46,10 +46,20 @@ search/filter, preview the raw file, and flush the macOS DNS cache.
 
 ## Install
 
-Hosts is distributed as source — you build it and sign it with **your own free
-Apple signing identity** (any Apple ID works — no paid Developer Program needed).
-It takes about five minutes, and because the app is built locally there's no
-Gatekeeper "unidentified developer" wall.
+**Download the latest signed, notarized release:**
+
+→ **[Download Hosts for macOS (.dmg)](https://etc-hosts.com/#install)**
+
+Open the `.dmg`, drag **HostsEditor** onto **Applications**, then launch it from
+Applications. The app is signed with a Developer ID and notarized by Apple, so
+there's no Gatekeeper "unidentified developer" wall — and because the ticket is
+stapled, the first launch works even offline.
+
+### Prefer to build it yourself?
+
+You can instead build Hosts from source and sign it with **your own free Apple
+signing identity** (any Apple ID works — no paid Developer Program needed). It
+takes about five minutes.
 
 → **Step-by-step guide:** [docs/build-from-source.md](docs/build-from-source.md)
 
@@ -66,7 +76,9 @@ The bundle is signed with a real signing identity (not ad-hoc) because
 `SMAppService` refuses to register an ad-hoc–signed daemon. A **free Apple
 Development certificate** (created from a free Apple ID "Personal Team" in Xcode)
 is enough to build and run locally; a paid **Developer ID** + notarization is only
-needed to distribute the app to other Macs. Override the identity with:
+needed to distribute the app to other Macs — that's how the published `.dmg` above
+is produced, via [`native/release.sh`](native/release.sh). Override the identity
+with:
 
 ```bash
 SIGN_IDENTITY="Apple Development: you@example.com (TEAMID)" ./build.sh
