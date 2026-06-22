@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **In-app auto-update (Sparkle).** Hosts now checks for new versions on its own
+  (daily) and on demand, then downloads and installs them in place — no manual
+  re-download. Updates are EdDSA-signed and verified against a public key shipped
+  in the app, and the update feed is an appcast published as a GitHub Release
+  asset, so it tracks the latest release with no site edits. An ad-hoc
+  "Check for Updates" action is available from the app menu, Settings → General,
+  and the profile menu.
 - **Notarized `.dmg` distribution.** Hosts is now downloadable as a signed,
   Developer ID–notarized, stapled disk image (drag-to-Applications, no Gatekeeper
   wall, works offline on first launch) alongside the build-from-source path. Added
@@ -21,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `native/build.sh` now stamps the bundle version from `APP_VERSION` (defaults to
   `1.0`; release builds derive it from the git tag) and adds a secure `--timestamp`
   to signatures when `RELEASE=1`, as required for notarization.
+- `native/build.sh` downloads (checksum-pinned) and embeds Sparkle 2.9.3 into the
+  bundle — signing its nested helpers inside-out for notarization — and stamps the
+  Sparkle keys (appcast feed URL, public EdDSA key, daily check interval) into
+  Info.plist. `native/release.sh` generates and signs `appcast.xml` after stapling;
+  it must be uploaded alongside the DMGs for in-app updates to resolve.
+
+### Fixed
+
+- The About panel now reads the real `CFBundleShortVersionString` instead of a
+  hardcoded `1.0`, so it matches the running build (and Sparkle's current version).
 
 ## [1.0.3] - 2026-06-19
 
