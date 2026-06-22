@@ -53,9 +53,10 @@ private func showDiagnostics() {
 }
 
 private func showAboutPanel() {
+    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     NSApplication.shared.orderFrontStandardAboutPanel(options: [
         .applicationName: "Hosts",
-        .applicationVersion: "1.0",
+        .applicationVersion: version,
         .credits: NSAttributedString(
             string: "A native macOS editor for /etc/hosts.",
             attributes: [.font: NSFont.systemFont(ofSize: 11)]),
@@ -66,9 +67,15 @@ private func showAboutPanel() {
 // MARK: - App menu bar
 
 struct AppMenuCommands: Commands {
+    // Mirrors Sparkle's updater state so "Check for Updates…" greys out while a
+    // check is already running.
+    @ObservedObject private var updater = UpdaterManager.shared
+
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Hosts") { showAboutPanel() }
+            Button("Check for Updates…") { updater.checkForUpdates() }
+                .disabled(!updater.canCheckForUpdates)
         }
         // Replace the default "New Window" item — this is a single-window app.
         CommandGroup(replacing: .newItem) {
@@ -112,6 +119,7 @@ struct AppMenuCommands: Commands {
 struct SettingsView: View {
     @ObservedObject private var store = HostsStore.shared
     @ObservedObject private var themeStore = ThemeStore.shared
+    @ObservedObject private var updater = UpdaterManager.shared
 
     var body: some View {
         TabView {
@@ -123,6 +131,10 @@ struct SettingsView: View {
                     Button(store.pinSet ? "Change PIN…" : "Set PIN…") {
                         postMenuCommand(.hpManagePIN)
                     }
+                }
+                LabeledContent("Software Update") {
+                    Button("Check Now…") { updater.checkForUpdates() }
+                        .disabled(!updater.canCheckForUpdates)
                 }
             }
             .padding(20)
