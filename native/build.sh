@@ -11,13 +11,38 @@ BIN="HostsEditor"
 # and CHANGELOG/tag stay in sync.
 APP_VERSION="${APP_VERSION:-1.0}"
 
+# ── Sparkle (auto-update framework) ───────────────────────────────────────────
+# Pinned + checksum-verified, downloaded into a gitignored cache on first build
+# and reused thereafter. Bumping SPARKLE_VERSION means updating SPARKLE_SHA256
+# (printed by: shasum -a 256 Vendor/Sparkle-<v>.tar.xz). The bin/ tools
+# (generate_keys, sign_update, generate_appcast) used by release.sh live here too.
+SPARKLE_VERSION="2.9.3"
+SPARKLE_SHA256="74a07da821f92b79310009954c0e15f350173374a3abe39095b4fc5096916be6"
+SPARKLE_DIR="Vendor/Sparkle-${SPARKLE_VERSION}"
+SPARKLE_FRAMEWORK="$SPARKLE_DIR/Sparkle.framework"
+if [ ! -d "$SPARKLE_FRAMEWORK" ]; then
+  echo "→ Fetching Sparkle ${SPARKLE_VERSION}…"
+  mkdir -p "$SPARKLE_DIR"
+  TARBALL="Vendor/Sparkle-${SPARKLE_VERSION}.tar.xz"
+  curl -fL --retry 3 -o "$TARBALL" \
+    "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+  echo "$SPARKLE_SHA256  $TARBALL" | shasum -a 256 -c - \
+    || { echo "✗ Sparkle checksum mismatch — refusing to build."; exit 1; }
+  tar -xJf "$TARBALL" -C "$SPARKLE_DIR"
+fi
+
 echo "→ Compiling app…"
 APP_SOURCES=(
   HostsEditor.swift
   Core/*.swift
   UI/*.swift
 )
-swiftc -O -parse-as-library "${APP_SOURCES[@]}" -o "$BIN"
+# -F so `import Sparkle` resolves via the framework's bundled module map; the
+# rpath lets the embedded copy in Contents/Frameworks load at runtime.
+swiftc -O -parse-as-library "${APP_SOURCES[@]}" \
+  -F "$SPARKLE_DIR" -framework Sparkle \
+  -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
+  -o "$BIN"
 
 echo "→ Compiling privileged helper…"
 swiftc -O HostsHelper.swift -o com.etchosts.hostshelper
@@ -26,10 +51,15 @@ echo "→ Assembling app bundle…"
 rm -rf "$APP"
 # SMAppService requires the daemon executable in Contents/MacOS and its launchd
 # plist in Contents/Library/LaunchDaemons (managed in-bundle, not /Library).
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchDaemons"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" \
+         "$APP/Contents/Library/LaunchDaemons" "$APP/Contents/Frameworks"
 mv "$BIN" "$APP/Contents/MacOS/$BIN"
 mv com.etchosts.hostshelper "$APP/Contents/MacOS/com.etchosts.hostshelper"
 chmod +x "$APP/Contents/MacOS/com.etchosts.hostshelper"
+
+# Embed Sparkle.framework (ditto preserves the version symlinks + perms Sparkle
+# relies on). It is signed inside-out below, before the app bundle is sealed.
+/usr/bin/ditto "$SPARKLE_FRAMEWORK" "$APP/Contents/Frameworks/Sparkle.framework"
 
 cat > "$APP/Contents/Library/LaunchDaemons/com.etchosts.hostshelper.plist" <<DAEMON
 <?xml version="1.0" encoding="UTF-8"?>
@@ -61,6 +91,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <!-- Sparkle auto-update. Feed is an appcast published as a GitHub Release
+       asset (release.sh generates + signs it). SUPublicEDKey is the public half
+       of the EdDSA key whose private half lives in the release machine's
+       keychain; it is safe to ship. -->
+  <key>SUFeedURL</key><string>https://github.com/akar016012/hosts-app-macos/releases/latest/download/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>z8zs16OenRvH760NohazXoxcj5+Gb53vMSLYIDmLXv8=</string>
+  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>86400</integer>
 </dict>
 </plist>
 PLIST
@@ -104,6 +142,19 @@ TS_FLAG=""; [ -n "${RELEASE:-}" ] && TS_FLAG="--timestamp"
 # extension and truncates the identifier to "com.etchosts".
 codesign --force --options runtime $TS_FLAG --identifier com.etchosts.hostshelper \
   --sign "$SIGN_IDENTITY" "$APP/Contents/MacOS/com.etchosts.hostshelper"
+# Sparkle ships pre-signed by its authors; re-sign every nested executable with
+# our identity (inside-out) so notarization passes and the app's seal is
+# consistent. Versions/B is Sparkle 2.x's current version dir.
+SPK="$APP/Contents/Frameworks/Sparkle.framework"
+for nested in \
+  "Versions/B/XPCServices/Installer.xpc" \
+  "Versions/B/XPCServices/Downloader.xpc" \
+  "Versions/B/Autoupdate" \
+  "Versions/B/Updater.app"; do
+  [ -e "$SPK/$nested" ] && \
+    codesign --force --options runtime $TS_FLAG --sign "$SIGN_IDENTITY" "$SPK/$nested"
+done
+codesign --force --options runtime $TS_FLAG --sign "$SIGN_IDENTITY" "$SPK"
 codesign --force --options runtime $TS_FLAG --sign "$SIGN_IDENTITY" "$APP"
 codesign --verify --strict "$APP" && echo "→ Signed & verified"
 

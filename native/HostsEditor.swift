@@ -8,6 +8,10 @@ import SwiftUI
 
 @main
 struct HostsEditorApp: App {
+    // Force the Sparkle updater to start at launch so its scheduled background
+    // checks begin regardless of whether the menu is ever opened.
+    init() { _ = UpdaterManager.shared }
+
     var body: some Scene {
         WindowGroup("Hosts") {
             ContentView().frame(minWidth: 1080, minHeight: 720)

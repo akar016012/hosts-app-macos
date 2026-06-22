@@ -129,6 +129,7 @@ struct ProfileMenu: View {
     @ObservedObject var store: HostsStore
     @ObservedObject private var profile = ProfileStore.shared
     @ObservedObject private var themeStore = ThemeStore.shared
+    @ObservedObject private var updater = UpdaterManager.shared
     @Binding var isPresented: Bool
     @Binding var showProfileEdit: Bool
     @Binding var showPinSetup: Bool
@@ -166,6 +167,10 @@ struct ProfileMenu: View {
             menuRow("Replay welcome tour", icon: "sparkles") {
                 close(); OnboardingStore.shared.replay()
             }
+            menuRow("Check for updates", icon: "arrow.down.circle") {
+                close(); updater.checkForUpdates()
+            }
+            .disabled(!updater.canCheckForUpdates)
         }
         .padding(6).frame(width: 256)
         .background(Theme.surface.opacity(0.95))

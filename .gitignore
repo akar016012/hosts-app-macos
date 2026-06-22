@@ -46,3 +46,8 @@ native/.devid
 # Release artifacts produced by native/release.sh.
 native/*.dmg
 native/*.zip
+# Generated Sparkle appcast feed (uploaded as a GitHub Release asset).
+native/appcast.xml
+
+# Sparkle framework + tools, downloaded + checksum-verified by build.sh.
+native/Vendor/

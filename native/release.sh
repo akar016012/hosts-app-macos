@@ -75,7 +75,7 @@ xcrun stapler staple "$APP"
 rm -f "$ZIP"
 
 # ── 3. Build a compressed DMG with an /Applications drop target ───────────────
-echo "→ Building $DMG…"
+echo "→ Building ${DMG}…"
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 cp -R "$APP" "$STAGING/"
@@ -96,6 +96,34 @@ xcrun stapler staple "$DMG"
 STABLE_DMG="HostsEditor.dmg"
 cp -f "$DMG" "$STABLE_DMG"
 
+# ── 4b. Generate + sign the Sparkle appcast ───────────────────────────────────
+# The app reads its update feed from this appcast, published as a GitHub Release
+# asset at releases/latest/download/appcast.xml (auto-tracks the newest release,
+# same trick as the stable DMG). generate_appcast signs each enclosure with the
+# EdDSA private key in the keychain (public half is SUPublicEDKey in Info.plist)
+# and records the version/length from the DMG's bundled Info.plist.
+#
+# We run it over a temp folder holding only THIS release's DMG plus the previously
+# published appcast (downloaded if present), so prior entries are carried forward
+# with their original version-specific URLs while the new entry gets this
+# release's download prefix.
+REPO_URL="https://github.com/akar016012/hosts-app-macos"
+GEN_APPCAST="$(ls Vendor/Sparkle-*/bin/generate_appcast 2>/dev/null | head -1)"
+[ -n "$GEN_APPCAST" ] || fail "generate_appcast not found under native/Vendor (build.sh fetches it)."
+echo "→ Generating appcast…"
+APPCAST_DIR="$(mktemp -d)"
+trap 'rm -rf "$STAGING" "$APPCAST_DIR"' EXIT
+cp "$DMG" "$APPCAST_DIR/"
+curl -fsSL -o "$APPCAST_DIR/appcast.xml" \
+  "$REPO_URL/releases/latest/download/appcast.xml" 2>/dev/null \
+  && echo "  (merging into existing feed)" || echo "  (no existing feed — creating fresh)"
+"$GEN_APPCAST" \
+  --download-url-prefix "$REPO_URL/releases/download/v${APP_VERSION}/" \
+  --link "$REPO_URL" \
+  "$APPCAST_DIR"
+cp -f "$APPCAST_DIR/appcast.xml" appcast.xml
+echo "✓ $(pwd)/appcast.xml  — signed Sparkle feed."
+
 # ── 5. Verify the way Gatekeeper will on the user's Mac ───────────────────────
 echo "→ Verifying…"
 spctl -a -vvv -t install "$DMG"
@@ -104,8 +132,9 @@ xcrun stapler validate "$DMG"
 echo ""
 echo "✓ $(pwd)/$DMG  — signed, notarized, stapled and ready to distribute."
 echo "✓ $(pwd)/$STABLE_DMG  — stable-named copy for the website 'latest' download link."
+echo "✓ $(pwd)/appcast.xml  — Sparkle update feed (must be on the Release for in-app updates)."
 echo ""
-echo "  Publish both to a GitHub Release:"
-echo "    gh release create v$APP_VERSION \"$DMG\" \"$STABLE_DMG\" \\"
+echo "  Publish all three to a GitHub Release:"
+echo "    gh release create v$APP_VERSION \"$DMG\" \"$STABLE_DMG\" appcast.xml \\"
 echo "      --title \"Hosts $APP_VERSION\" --notes \"See CHANGELOG.md\""
 echo "  (use 'gh release upload v$APP_VERSION ...' if the release already exists)"
