@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Session unlock now runs its privileged-helper setup off the main thread, so the
+  UI stays responsive during the occasionally multi-second helper registration and
+  socket waits.
 - `native/build.sh` now stamps the bundle version from `APP_VERSION` (defaults to
   `1.0`; release builds derive it from the git tag) and adds a secure `--timestamp`
   to signatures when `RELEASE=1`, as required for notarization.
@@ -36,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Privileged helper self-repair.** When macOS reported the helper as enabled but
+  launchd refused to launch it — a stale Background Task Management record after an
+  in-place update, surfacing as "Helper not responding after registration" — every
+  unlock dead-ended. The app now detects the enabled-but-unreachable state and
+  re-registers the helper automatically, recovering within a single unlock.
+- Helper, Touch ID, signing, DNS-flush, and import/export errors now show
+  actionable, plain-language guidance and no longer leak raw system error text; the
+  privileged daemon's failures are translated from their structured codes into
+  user-facing advice.
 - The About panel now reads the real `CFBundleShortVersionString` instead of a
   hardcoded `1.0`, so it matches the running build (and Sparkle's current version).
 

@@ -229,7 +229,7 @@ struct SchemesSheet: View {
         panel.message = "Export this scheme to share it."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try schemes.exportBundle([scheme.id], to: url); store.notify("Exported “\(scheme.name)”", .ok) }
-        catch { store.notify("Export failed: \(error.localizedDescription)", .error) }
+        catch { store.notify("Couldn't export the scheme. Try a different location.", .error) }
     }
 
     private func importBundle() {
@@ -248,7 +248,7 @@ struct SchemesSheet: View {
             store.notify("Imported \(n) scheme\(n == 1 ? "" : "s")", .ok)
             selectedID = schemes.schemes.first?.id
         } catch {
-            store.notify("Import failed: \(error.localizedDescription)", .error)
+            store.notify("Couldn't import that file. Make sure it's a valid scheme export (.\(SchemeStore.bundleExtension) or .json).", .error)
         }
     }
 }

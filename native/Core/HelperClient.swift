@@ -81,19 +81,47 @@ enum HelperClient {
         do {
             try ServiceManager.registerIfNeeded()
         } catch {
-            throw HostsError.failed("Couldn't register the Hosts helper: \(error.localizedDescription)")
+            throw HostsError.failed("Couldn't set up the Hosts helper. Quit and reopen Hosts, then try again.")
         }
+        try ensureEnabled()
+
+        // Wait for the freshly-launched daemon to bind its socket.
+        if !waitForSocket() {
+            // The system reports the daemon `.enabled` but its socket never came up.
+            // That's the signature of a stale Background Task Management record after
+            // an in-place app update (launchd rejects the new binary's code hash with
+            // EX_CONFIG and never spawns it), which registerIfNeeded() won't fix
+            // because it short-circuits on the `.enabled` status. Re-register once to
+            // record the current hash, re-check approval, then wait again.
+            do {
+                try ServiceManager.reregister()
+            } catch {
+                throw HostsError.failed("Couldn't restart the Hosts helper. Remove “Hosts” from System Settings → Login Items, reopen Hosts, then unlock again.")
+            }
+            try ensureEnabled()
+            guard waitForSocket() else {
+                throw HostsError.failed("The Hosts helper didn't start. Remove “Hosts” from System Settings → Login Items, reopen Hosts, then unlock again.")
+            }
+        }
+        if resetSigningKey || needsEnroll() { try enroll(resetSigningKey: resetSigningKey) }
+    }
+
+    // Throw an actionable error unless the service is `.enabled`. Deep-links to Login
+    // Items when approval is still pending (e.g. right after a first/re-registration).
+    private static func ensureEnabled() throws {
         if ServiceManager.status == .requiresApproval {
             ServiceManager.openLoginItems()
             throw HostsError.failed("Enable “Hosts” in System Settings → Login Items, then unlock again.")
         }
         guard ServiceManager.status == .enabled else {
-            throw HostsError.failed("Hosts helper is \(ServiceManager.statusDescription()). Try again.")
+            throw HostsError.failed("The Hosts helper isn't enabled yet. Enable “Hosts” in System Settings → Login Items, then unlock again.")
         }
-        // Wait for the freshly-launched daemon to bind its socket.
-        for _ in 0..<25 { if isResponding() { break }; usleep(200_000) }
-        guard isResponding() else { throw HostsError.failed("Helper not responding after registration.") }
-        if resetSigningKey || needsEnroll() { try enroll(resetSigningKey: resetSigningKey) }
+    }
+
+    // Poll for the daemon's socket for ~5s. Returns true as soon as it answers.
+    private static func waitForSocket() -> Bool {
+        for _ in 0..<25 { if isResponding() { return true }; usleep(200_000) }
+        return isResponding()
     }
 
     // Hand the daemon our public key (trust-on-first-use, or a rotation that the
@@ -103,7 +131,7 @@ enum HelperClient {
         let pub = try SigningKey.publicKeyData(resetExistingKey: resetSigningKey)
         let request: [String: Any] = ["cmd": "enroll", "protocol": Helper.protocolVersion,
                                       "pubkey": pub.base64EncodedString()]
-        try send(request, failureMessage: "Helper rejected enrollment.")
+        try send(request, failureMessage: "Couldn't finish enabling Hosts. Lock Hosts, then unlock again.")
     }
 
     // Sends a session-signed write request to the daemon. Touch ID unlocks the
@@ -117,19 +145,44 @@ enum HelperClient {
 
         let request: [String: Any] = ["cmd": "write", "protocol": Helper.protocolVersion,
                                       "ts": ts, "nonce": nonce, "content": contentB64, "sig": sig]
-        try send(request, failureMessage: "Helper rejected the write.")
+        try send(request, failureMessage: "Couldn't save your changes. Try again.")
+    }
+
+    // Translate the daemon's machine-readable failure `code` into a user-facing,
+    // actionable message. The daemon's raw `error` string is technical (e.g. "bad
+    // signature", "stale request") and is never surfaced to the user.
+    private static func friendlyError(code: String?, fallback: String) -> String {
+        switch code {
+        case "not_enrolled", "bad_signature":
+            return "Couldn't verify this unlock session. Lock Hosts, then unlock again."
+        case "stale_request":
+            return "Your Mac's clock looks out of sync, so the change was rejected. Check Date & Time in System Settings, then try again."
+        case "replayed_timestamp", "replayed_nonce":
+            return "That change was already applied. Try again."
+        case "protocol_mismatch":
+            return "The Hosts helper needs to finish updating. Quit and reopen Hosts, then try again."
+        case "invalid_content":
+            return "Those entries can't be saved — remove any unusual characters and try again."
+        case "payload_too_large":
+            return "This hosts file is too large to save."
+        case "write_failed":
+            return "Couldn't save changes to /etc/hosts. Try again."
+        case "unauthorized":
+            return "Hosts can only be unlocked by the macOS user who first set it up."
+        default:
+            return fallback
+        }
     }
 
     // One JSON object + "\n" per connection, then read the daemon's one-line
     // reply and assert ok. Used by the throwing write/enroll path.
     private static func send(_ request: [String: Any], failureMessage: String) throws {
-        guard let obj = try requestObject(request) else {
-            throw HostsError.failed("No response from helper.")
+        guard let obj = try requestObject(request), let ok = obj["ok"] as? Bool else {
+            throw HostsError.failed("The Hosts helper isn't responding. Lock Hosts, then unlock again.")
         }
-        guard let ok = obj["ok"] as? Bool else {
-            throw HostsError.failed("No response from helper.")
+        if !ok {
+            throw HostsError.failed(friendlyError(code: obj["code"] as? String, fallback: failureMessage))
         }
-        if !ok { throw HostsError.failed((obj["error"] as? String) ?? failureMessage) }
     }
 
     // Socket round-trip returning the parsed reply object (or nil on no/garbled
@@ -137,7 +190,7 @@ enum HelperClient {
     // daemon isn't reachable — callers that just want diagnostics swallow those.
     private static func requestObject(_ request: [String: Any]) throws -> [String: Any]? {
         let body = try JSONSerialization.data(withJSONObject: request)
-        guard let fd = connect(retries: 6) else { throw HostsError.failed("Helper not running. Re-run setup.") }
+        guard let fd = connect(retries: 6) else { throw HostsError.failed("The Hosts helper isn't running. Lock Hosts, then unlock again to restart it.") }
         defer { close(fd) }
 
         var payload = body; payload.append(0x0A)
@@ -197,7 +250,7 @@ enum HelperClient {
         if p.terminationStatus != 0 {
             let msg = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             if msg.contains("-128") || msg.lowercased().contains("cancel") { throw HostsError.cancelled }
-            throw HostsError.failed(msg.trimmingCharacters(in: .whitespacesAndNewlines))
+            throw HostsError.failed("Couldn't flush the DNS cache. Try again.")
         }
     }
 }

@@ -35,6 +35,34 @@ enum ServiceManager {
         try service.unregister()
     }
 
+    // Force a fresh registration: tear down the existing record and register again.
+    // Recovers the case where the system reports the daemon `.enabled` but launchd
+    // refuses to actually spawn it (EX_CONFIG) — typically because an in-place app
+    // update (e.g. Sparkle) replaced the bundle, leaving the Background Task
+    // Management record pinning the old binary's code hash.
+    //
+    // unregister() is best-effort (a wedged/partial record may already be gone) AND
+    // asynchronous: BTM processes the teardown after the call returns, and crucially
+    // the published `status` flips to `.notRegistered` *before* that teardown actually
+    // finishes — so the status can't be used to know when it's safe to re-register.
+    // A register() issued inside the teardown window fails with EPERM ("Operation not
+    // permitted"). So we don't trust the status: we wait a fixed grace before each
+    // attempt and retry over a several-second budget until BTM lets the register land.
+    // This blocks its calling thread, so callers run it off the main actor.
+    static func reregister() throws {
+        try? service.unregister()
+        var lastError: Error?
+        // 12 attempts × 0.5s grace ≈ up to 6s for BTM to flush the teardown. The grace
+        // comes *before* each register (including the first), so we never register
+        // inside the window that yields EPERM.
+        for _ in 0..<12 {
+            usleep(500_000)
+            do { try service.register(); return }
+            catch { lastError = error }
+        }
+        if let lastError { throw lastError }
+    }
+
     // Open System Settings → Login Items so the user can approve a pending daemon.
     static func openLoginItems() {
         SMAppService.openSystemSettingsLoginItems()
