@@ -50,7 +50,7 @@ enum PinStore {
     static func set(_ pin: String) throws {
         var salt = Data(count: 16)
         let ok = salt.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
-        guard ok == errSecSuccess else { throw HostsError.failed("Could not generate PIN salt.") }
+        guard ok == errSecSuccess else { throw HostsError.failed("Couldn't save your PIN. Try again.") }
 
         let record = Record(salt: salt, hash: digest(pin, salt: salt, rounds: iterations), iterations: iterations)
         let data = try JSONEncoder().encode(record)

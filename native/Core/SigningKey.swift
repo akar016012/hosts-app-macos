@@ -8,14 +8,6 @@ import Security
 // MARK: - Session signing key
 
 enum SigningKey {
-    // Stringify a CFError without force-unwrapping: SecKey APIs don't guarantee the
-    // out-error is populated on failure, so a nil error must degrade to a label
-    // rather than crash with `err!`.
-    private static func errString(_ err: Unmanaged<CFError>?) -> String {
-        guard let err else { return "unknown error" }
-        return String(describing: err.takeRetainedValue())
-    }
-
     // The session signing key is an EC P-256 private key persisted as a 0600 file
     // in the user's Application Support directory — NOT in the keychain. A
     // keychain-stored key gates each use with an ACL bound to the app's code
@@ -51,7 +43,7 @@ enum SigningKey {
         guard let error else { return "Touch ID is not available on this Mac." }
         let nsError = error as NSError
         guard nsError.domain == LAError.errorDomain, let code = LAError.Code(rawValue: nsError.code) else {
-            return error.localizedDescription
+            return "Touch ID isn't available right now. Set it up in System Settings, then try again."
         }
         switch code {
         case .biometryNotAvailable:
@@ -63,7 +55,7 @@ enum SigningKey {
         case .passcodeNotSet:
             return "Set a login password before using Touch ID session unlock."
         default:
-            return error.localizedDescription
+            return "Touch ID isn't available right now. Set it up in System Settings, then try again."
         }
     }
 
@@ -79,7 +71,7 @@ enum SigningKey {
                 break
             }
         }
-        return .failed("Touch ID failed: \(error.localizedDescription)")
+        return .failed("Couldn't confirm Touch ID. Try again.")
     }
 
     static func ensureTouchIDAvailable() throws {
@@ -119,10 +111,10 @@ enum SigningKey {
         ]
         var err: Unmanaged<CFError>?
         guard let key = SecKeyCreateRandomKey(attrs as CFDictionary, &err) else {
-            throw HostsError.failed("Signing key creation failed: \(errString(err))")
+            throw HostsError.failed("Couldn't set up secure unlock. Reopen Hosts and try again.")
         }
         guard let data = SecKeyCopyExternalRepresentation(key, &err) as Data? else {
-            throw HostsError.failed("Signing key export failed: \(errString(err))")
+            throw HostsError.failed("Couldn't set up secure unlock. Reopen Hosts and try again.")
         }
         try persist(data)
         return key
@@ -141,10 +133,12 @@ enum SigningKey {
     static func publicKeyData(resetExistingKey: Bool = false) throws -> Data {
         if resetExistingKey { deleteExisting() }
         let key = try getOrCreate()
-        guard let pub = SecKeyCopyPublicKey(key) else { throw HostsError.failed("No public key.") }
+        guard let pub = SecKeyCopyPublicKey(key) else {
+            throw HostsError.failed("Couldn't set up secure unlock. Reopen Hosts and try again.")
+        }
         var err: Unmanaged<CFError>?
         guard let data = SecKeyCopyExternalRepresentation(pub, &err) as Data? else {
-            throw HostsError.failed("Public key export failed: \(errString(err))")
+            throw HostsError.failed("Couldn't set up secure unlock. Reopen Hosts and try again.")
         }
         return data
     }
@@ -161,7 +155,7 @@ enum SigningKey {
 
     static func sign(_ data: Data) throws -> Data {
         guard let key = existing() else {
-            throw HostsError.failed("Signing key missing — run setup again.")
+            throw HostsError.failed("Secure unlock was reset. Lock Hosts, then unlock again to continue.")
         }
         var err: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(key, .ecdsaSignatureMessageX962SHA256, data as CFData, &err) as Data? else {
@@ -170,9 +164,8 @@ enum SigningKey {
                 if code == errSecUserCanceled || code == LAError.userCancel.rawValue || code == -2 {
                     throw HostsError.cancelled
                 }
-                throw HostsError.failed("Signing failed: \(e)")
             }
-            throw HostsError.failed("Signing failed: unknown error")
+            throw HostsError.failed("Couldn't confirm your unlock. Lock Hosts, then unlock again.")
         }
         return sig
     }
