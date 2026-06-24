@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **"Update available" pill in the header.** When a newer version exists, an
+  accent-colored pill (styled like the Lock pill) now appears in the header
+  shortly after launch, reading "Update to \<version\>"; clicking it opens
+  Sparkle's existing install flow. A silent appcast probe on first appear drives
+  it, and the pill self-clears once the app is on the latest version — no
+  unsolicited prompt at launch. The window's minimum width was widened to 1240 pt
+  to keep the header controls uncrowded when the pill is shown.
 - **Configurable auto-lock timeout.** The app can now lock itself automatically
   after a chosen period of inactivity. Options (Never / 1 min / 5 min / 15 min /
   30 min / 1 hour) are picked from the Auto-lock row in the profile Security
