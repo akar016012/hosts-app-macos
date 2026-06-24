@@ -59,6 +59,7 @@ struct StatusDot: View {
 struct ThemedToggle: View {
     let on: Bool
     var amber: Bool = false
+    var enabled: Bool = true
     var accessibilityText: String = ""
     let action: () -> Void
     @State private var splashScale = 0.65
@@ -67,7 +68,7 @@ struct ThemedToggle: View {
 
     var body: some View {
         Button {
-            runSplash()
+            if enabled { runSplash() }
             action()
         } label: {
             ZStack {
@@ -98,8 +99,10 @@ struct ThemedToggle: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .opacity(enabled ? 1 : 0.4)
         .animation(.easeOut(duration: 0.16), value: on)
         .animation(.easeOut(duration: 0.16), value: amber)
+        .animation(.easeOut(duration: 0.16), value: enabled)
         .accessibilityLabel(accessibilityText.isEmpty ? "Toggle" : accessibilityText)
         .accessibilityValue(on ? "On" : (amber ? "Partially on" : "Off"))
     }
@@ -179,7 +182,7 @@ struct GroupSection: View {
                 .background(Theme.surface2).clipShape(Capsule())
             Text(group.source).font(.system(size: 12)).foregroundColor(Theme.textDim)
             Spacer()
-            ThemedToggle(on: allOn, amber: anyOn && !allOn, accessibilityText: "Toggle group \(group.name)") {
+            ThemedToggle(on: allOn, amber: anyOn && !allOn, enabled: store.editingReady, accessibilityText: "Toggle group \(group.name)") {
                 store.toggleGroup(entries, on: !anyOn)
             }
         }
@@ -205,7 +208,7 @@ struct EntryRow: View {
                     .font(.system(size: 19)).foregroundColor(selected ? Theme.accent : Theme.textMut)
                     .frame(width: 28)
             } else {
-                ThemedToggle(on: entry.enabled, accessibilityText: "Toggle \(entry.hostnames.first ?? entry.ip)") { store.toggle(entry.id) }
+                ThemedToggle(on: entry.enabled, enabled: store.editingReady, accessibilityText: "Toggle \(entry.hostnames.first ?? entry.ip)") { store.toggle(entry.id) }
             }
 
             IPBadge(ip: entry.ip, enabled: entry.enabled).frame(minWidth: 120, alignment: .leading)
@@ -229,8 +232,10 @@ struct EntryRow: View {
                 SourceChip(text: sourceTag(for: entry))
                 StatusDot(status: store.status(for: entry)).frame(width: 64, alignment: .leading)
                 Button(action: onEdit) { Image(systemName: "pencil") }.buttonStyle(IconButton())
+                    .opacity(store.editingReady ? 1 : 0.4)
                     .accessibilityLabel("Edit \(entry.hostnames.first ?? entry.ip)")
                 Button(action: onDelete) { Image(systemName: "trash") }.buttonStyle(IconButton(danger: true))
+                    .opacity(store.editingReady ? 1 : 0.4)
                     .accessibilityLabel("Delete \(entry.hostnames.first ?? entry.ip)")
             }
         }
