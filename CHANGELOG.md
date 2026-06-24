@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Configurable auto-lock timeout.** The app can now lock itself automatically
+  after a chosen period of inactivity. Options (Never / 1 min / 5 min / 15 min /
+  30 min / 1 hour) are picked from the Auto-lock row in the profile Security
+  section; the selection persists across launches. An NSEvent local monitor resets
+  the countdown on any keyboard, mouse, or scroll interaction; a 60 s background
+  timer fires the lock, clears Select mode, and shows a toast. Defaults to 30 min.
+
+### Changed
+
+- **Locked-state UI.** The app now visibly dims every blocked control when locked
+  — entry and group toggles, Edit/Delete icon buttons, Flush DNS, New, Select,
+  Schemes, History, and Raw — so it is immediately clear that changes require
+  unlocking. Clicking a dimmed control still shows "Unlock to make changes." via
+  the existing store guard.
+- **No misleading toggle animation when locked.** A locked `ThemedToggle` no
+  longer plays its splash animation; `commit()` returns before mutating when
+  locked, so the knob stays put and the toast appears with no snap-back flicker.
+- **Lock clears Select mode.** Locking (manually or via auto-lock) exits Select
+  mode and clears the selection so the BulkBar cannot linger over blocked content.
+- **Flush DNS guarded when locked.** Flush DNS is now wrapped in the same
+  `guarded {}` path as New/Edit/Delete and shows "Unlock to make changes." rather
+  than silently running while locked.
+
 ## [1.0.5] - 2026-06-24
 
 ### Changed

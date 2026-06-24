@@ -51,3 +51,4 @@ native/appcast.xml
 
 # Sparkle framework + tools, downloaded + checksum-verified by build.sh.
 native/Vendor/
+temp_docs/*

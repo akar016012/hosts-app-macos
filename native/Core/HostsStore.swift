@@ -53,9 +53,40 @@ final class HostsStore: ObservableObject {
     @Published var statusByIP: [String: HostStatus] = [:]
     @Published var history: [HostSnapshot] = []
 
+    static let autoLockKey = "autoLockMinutes"
+    @Published var autoLockMinutes: Int = {
+        let stored = UserDefaults.standard.integer(forKey: HostsStore.autoLockKey)
+        return stored == 0 ? 30 : stored
+    }() {
+        didSet { UserDefaults.standard.set(autoLockMinutes, forKey: HostsStore.autoLockKey) }
+    }
+    private var lastActivityDate = Date()
+    private var inactivityTimer: Timer?
+
     enum ToastKind { case ok, error, info }
     let path = "/etc/hosts"
     var editingReady: Bool { sessionUnlocked && helperReady }
+
+    init() { startInactivityTimer() }
+
+    func resetActivityTimer() { lastActivityDate = Date() }
+
+    private func startInactivityTimer() {
+        inactivityTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.checkInactivity() }
+        }
+    }
+
+    private func checkInactivity() {
+        guard sessionUnlocked, autoLockMinutes > 0 else { return }
+        if Date().timeIntervalSince(lastActivityDate) >= Double(autoLockMinutes * 60) {
+            sessionUnlocked = false
+            selectMode = false
+            selection.removeAll()
+            let label = autoLockMinutes >= 60 ? "1h" : "\(autoLockMinutes)m"
+            showToast("Locked after \(label) of inactivity.", .info)
+        }
+    }
 
     var entries: [HostEntry] {
         lines.compactMap { if case .entry(let e) = $0 { return e } else { return nil } }
@@ -434,7 +465,7 @@ final class HostsStore: ObservableObject {
     func enterSelect() { selectMode = true }
     func exitSelect() { selectMode = false; selection.removeAll() }
 
-    func lock() { sessionUnlocked = false; showToast("Locked", .info) }
+    func lock() { sessionUnlocked = false; selectMode = false; selection.removeAll(); showToast("Locked", .info) }
     func nudgeLocked() { showToast("Unlock to make changes.", .error) }
     func toggleCollapse(_ g: HostGroup) {
         if collapsed.contains(g.rawValue) { collapsed.remove(g.rawValue) } else { collapsed.insert(g.rawValue) }

@@ -151,6 +151,7 @@ struct ProfileMenu: View {
 
             Group {
                 sectionLabel("SECURITY")
+                autoLockRow
                 if store.pinSet {
                     menuRow("Change PIN", icon: "number.square.fill") { present { showPinSetup = true } }
                     menuRow("Remove PIN", icon: "trash", danger: true) { store.removePIN() }
@@ -172,7 +173,7 @@ struct ProfileMenu: View {
             }
             .disabled(!updater.canCheckForUpdates)
         }
-        .padding(6).frame(width: 256)
+        .padding(6).frame(width: 290)
         .background(Theme.surface.opacity(0.95))
         .background(.ultraThinMaterial)
     }
@@ -270,6 +271,28 @@ struct ProfileMenu: View {
             Spacer()
             Picker("", selection: $store.defaultUnlock) {
                 ForEach(UnlockMethod.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .labelsHidden().pickerStyle(.menu).fixedSize()
+            .tint(Theme.accent)
+        }
+        .padding(.horizontal, 12).frame(height: 40)
+    }
+
+    // MARK: Security — auto-lock timeout
+
+    private var autoLockRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "timer").font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Theme.textDim).frame(width: 18)
+            Text("Auto-lock").font(.system(size: 13.5, weight: .semibold)).foregroundColor(Theme.text)
+            Spacer()
+            Picker("", selection: $store.autoLockMinutes) {
+                Text("Never").tag(0)
+                Text("1 min").tag(1)
+                Text("5 min").tag(5)
+                Text("15 min").tag(15)
+                Text("30 min").tag(30)
+                Text("1 hour").tag(60)
             }
             .labelsHidden().pickerStyle(.menu).fixedSize()
             .tint(Theme.accent)
