@@ -111,6 +111,40 @@ struct LockPill: View {
     }
 }
 
+// Accent-tinted "Update available" pill — same chrome as LockPill. Renders
+// nothing until Sparkle's silent probe reports a newer version, so the normal
+// header layout is untouched when the app is up to date. Tapping it launches
+// Sparkle's standard install flow.
+struct UpdatePill: View {
+    @ObservedObject var updater = UpdaterManager.shared
+
+    var body: some View {
+        // Group + value-bound animation so the transition animates: UpdatePill
+        // observes the updater, so its body re-renders when the flag flips and
+        // the insertion/removal is wrapped in an easeOut transaction.
+        Group {
+            if updater.updateAvailable {
+                Button { updater.checkForUpdates() } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "arrow.down.circle.fill").font(.system(size: 12, weight: .bold))
+                        Text(updater.latestVersion.map { "Update to \($0)" } ?? "Update available")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundColor(Theme.accent)
+                    .padding(.horizontal, 14).frame(height: 46)
+                    .background(Theme.accent.opacity(0.13))
+                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(Theme.accent.opacity(0.32), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+                }
+                .buttonStyle(.plain)
+                .help("A new version is available — click to install")
+                .transition(.opacity.combined(with: .move(edge: .trailing)))
+            }
+        }
+        .animation(.easeOut, value: updater.updateAvailable)
+    }
+}
+
 struct SegmentedFilter: View {
     @Binding var filter: Filter
     @ObservedObject var store: HostsStore

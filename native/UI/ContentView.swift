@@ -78,6 +78,7 @@ struct ContentView: View {
             guard !didRunInitialSetup else { return }
             didRunInitialSetup = true
             store.load()
+            UpdaterManager.shared.probeForUpdate()
             eventMonitor = NSEvent.addLocalMonitorForEvents(
                 matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]
             ) { event in
@@ -182,6 +183,8 @@ struct ContentView: View {
                 Text(store.path).font(.system(size: 12.5, design: .monospaced)).foregroundColor(Theme.textDim)
             }
             Spacer(minLength: 16)
+
+            UpdatePill()
 
             LockPill(store: store, showPinUnlock: $showPinUnlock, showPinSetup: $showPinSetup, onUnlock: handleUnlockTap)
 
