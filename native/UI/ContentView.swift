@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var showProfileEdit = false
     @State private var showThemeEditor = false
     @State private var didRunInitialSetup = false
+    @State private var eventMonitor: Any?
     @FocusState private var searchFocused: Bool
 
     private var visible: [HostEntry] {
@@ -77,6 +78,13 @@ struct ContentView: View {
             guard !didRunInitialSetup else { return }
             didRunInitialSetup = true
             store.load()
+            UpdaterManager.shared.probeForUpdate()
+            eventMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]
+            ) { event in
+                HostsStore.shared.resetActivityTimer()
+                return event
+            }
         }
         .onReceive(themeStore.$theme) { newTheme in
             applyThemeAppearance(newTheme)
@@ -114,9 +122,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .hpExport)) { _ in exportHosts() }
         .onReceive(NotificationCenter.default.publisher(for: .hpUndo)) { _ in store.undoLast() }
         .onReceive(NotificationCenter.default.publisher(for: .hpFind)) { _ in searchFocused = true }
-        .onReceive(NotificationCenter.default.publisher(for: .hpRaw)) { _ in showingRaw = true }
-        .onReceive(NotificationCenter.default.publisher(for: .hpHistory)) { _ in showingHistory = true }
-        .onReceive(NotificationCenter.default.publisher(for: .hpSchemes)) { _ in showingSchemes = true }
+        .onReceive(NotificationCenter.default.publisher(for: .hpRaw)) { _ in guarded { showingRaw = true } }
+        .onReceive(NotificationCenter.default.publisher(for: .hpHistory)) { _ in guarded { showingHistory = true } }
+        .onReceive(NotificationCenter.default.publisher(for: .hpSchemes)) { _ in guarded { showingSchemes = true } }
         .onReceive(NotificationCenter.default.publisher(for: .hpFlushDNS)) { _ in store.flushDNS() }
         .onReceive(NotificationCenter.default.publisher(for: .hpManagePIN)) { _ in showPinSetup = true }
         .onReceive(NotificationCenter.default.publisher(for: .hpEditTheme)) { _ in showThemeEditor = true }
@@ -176,18 +184,25 @@ struct ContentView: View {
             }
             Spacer(minLength: 16)
 
+            UpdatePill()
+
             LockPill(store: store, showPinUnlock: $showPinUnlock, showPinSetup: $showPinSetup, onUnlock: handleUnlockTap)
 
-            Button { store.flushDNS() } label: { Label("Flush DNS", systemImage: "arrow.triangle.2.circlepath") }
+            Button { guarded { store.flushDNS() } } label: { Label("Flush DNS", systemImage: "arrow.triangle.2.circlepath") }
                 .buttonStyle(SoftButton())
-            Button { showingSchemes = true } label: { Label("Schemes", systemImage: "rectangle.3.group") }
+                .opacity(store.editingReady ? 1 : 0.5)
+            Button { guarded { showingSchemes = true } } label: { Label("Schemes", systemImage: "rectangle.3.group") }
                 .buttonStyle(SoftButton())
-            Button { showingHistory = true } label: { Label("History", systemImage: "clock.arrow.circlepath") }
+                .opacity(store.editingReady ? 1 : 0.5)
+            Button { guarded { showingHistory = true } } label: { Label("History", systemImage: "clock.arrow.circlepath") }
                 .buttonStyle(SoftButton())
-            Button { showingRaw = true } label: { Label("Raw", systemImage: "chevron.left.forwardslash.chevron.right") }
+                .opacity(store.editingReady ? 1 : 0.5)
+            Button { guarded { showingRaw = true } } label: { Label("Raw", systemImage: "chevron.left.forwardslash.chevron.right") }
                 .buttonStyle(SoftButton())
+                .opacity(store.editingReady ? 1 : 0.5)
             Button { guarded { editorEntry = nil; showingEditor = true } } label: { Label("New", systemImage: "plus") }
                 .buttonStyle(PrimaryButton())
+                .opacity(store.editingReady ? 1 : 0.5)
 
             ProfileBadge(showProfile: $showProfile, store: store,
                          showProfileEdit: $showProfileEdit, showPinSetup: $showPinSetup,
@@ -222,12 +237,13 @@ struct ContentView: View {
             SegmentedFilter(filter: $filter, store: store)
 
             Button {
-                if store.selectMode { store.exitSelect() } else { store.enterSelect() }
+                guarded { if store.selectMode { store.exitSelect() } else { store.enterSelect() } }
             } label: {
                 Label(store.selectMode ? "Cancel" : "Select",
                       systemImage: store.selectMode ? "xmark" : "checklist")
             }
             .buttonStyle(SoftButton(active: store.selectMode))
+            .opacity(store.editingReady ? 1 : 0.5)
         }
         .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 8)
     }

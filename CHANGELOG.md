@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **"Update available" pill in the header.** When a newer version exists, an
+  accent-colored pill (styled like the Lock pill) now appears in the header
+  shortly after launch, reading "Update to \<version\>"; clicking it opens
+  Sparkle's existing install flow. A silent appcast probe on first appear drives
+  it, and the pill self-clears once the app is on the latest version — no
+  unsolicited prompt at launch. The window's minimum width was widened to 1240 pt
+  to keep the header controls uncrowded when the pill is shown.
+- **Configurable auto-lock timeout.** The app can now lock itself automatically
+  after a chosen period of inactivity. Options (Never / 1 min / 5 min / 15 min /
+  30 min / 1 hour) are picked from the Auto-lock row in the profile Security
+  section; the selection persists across launches. An NSEvent local monitor resets
+  the countdown on any keyboard, mouse, or scroll interaction; a 60 s background
+  timer fires the lock, clears Select mode, and shows a toast. Defaults to 30 min.
+
+### Changed
+
+- **Locked-state UI.** The app now visibly dims every blocked control when locked
+  — entry and group toggles, Edit/Delete icon buttons, Flush DNS, New, Select,
+  Schemes, History, and Raw — so it is immediately clear that changes require
+  unlocking. Clicking a dimmed control still shows "Unlock to make changes." via
+  the existing store guard.
+- **No misleading toggle animation when locked.** A locked `ThemedToggle` no
+  longer plays its splash animation; `commit()` returns before mutating when
+  locked, so the knob stays put and the toast appears with no snap-back flicker.
+- **Lock clears Select mode.** Locking (manually or via auto-lock) exits Select
+  mode and clears the selection so the BulkBar cannot linger over blocked content.
+- **Flush DNS guarded when locked.** Flush DNS is now wrapped in the same
+  `guarded {}` path as New/Edit/Delete and shows "Unlock to make changes." rather
+  than silently running while locked.
+
 ## [1.0.5] - 2026-06-24
 
 ### Changed
@@ -47,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Session unlock now runs its privileged-helper setup off the main thread, so the
+  UI stays responsive during the occasionally multi-second helper registration and
+  socket waits.
 - `native/build.sh` now stamps the bundle version from `APP_VERSION` (defaults to
   `1.0`; release builds derive it from the git tag) and adds a secure `--timestamp`
   to signatures when `RELEASE=1`, as required for notarization.
@@ -58,6 +93,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Privileged helper self-repair.** When macOS reported the helper as enabled but
+  launchd refused to launch it — a stale Background Task Management record after an
+  in-place update, surfacing as "Helper not responding after registration" — every
+  unlock dead-ended. The app now detects the enabled-but-unreachable state and
+  re-registers the helper automatically, recovering within a single unlock.
+- Helper, Touch ID, signing, DNS-flush, and import/export errors now show
+  actionable, plain-language guidance and no longer leak raw system error text; the
+  privileged daemon's failures are translated from their structured codes into
+  user-facing advice.
 - The About panel now reads the real `CFBundleShortVersionString` instead of a
   hardcoded `1.0`, so it matches the running build (and Sparkle's current version).
 
