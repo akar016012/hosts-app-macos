@@ -80,7 +80,7 @@ final class HostsStore: ObservableObject {
 
     func load() {
         guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
-            showToast("Could not read \(path)", .error); return
+            showToast("Couldn't read \(path). Reopen Hosts and try again.", .error); return
         }
         rawText = raw
         lines = parseHosts(raw)
@@ -119,11 +119,15 @@ final class HostsStore: ObservableObject {
             do {
                 try await SigningKey.authenticate(reason: resetSigningKey ? "reset Hosts session access" : "unlock Hosts for this session")
                 sessionUnlocked = true
-                try HelperClient.prepare(resetSigningKey: resetSigningKey)
-                helperReady = HelperClient.isReady()
+                // prepare() does blocking socket waits and (on repair) several seconds
+                // of BTM retries, so run it off the main actor to keep the UI live.
+                helperReady = try await Task.detached(priority: .userInitiated) {
+                    try HelperClient.prepare(resetSigningKey: resetSigningKey)
+                    return HelperClient.isReady()
+                }.value
                 showToast(helperReady ? "Hosts is ready for this session" : "Finish launch setup before editing", helperReady ? .ok : .error)
             } catch HostsError.cancelled {
-            } catch { showToast(error.localizedDescription, .error) }
+            } catch { showToast(userMessage(error), .error) }
             isPreparing = false
         }
     }
@@ -160,7 +164,7 @@ final class HostsStore: ObservableObject {
             showToast("PIN saved", .ok)
             return nil
         } catch {
-            return error.localizedDescription
+            return "Couldn't save your PIN. Try again."
         }
     }
 
@@ -188,12 +192,16 @@ final class HostsStore: ObservableObject {
             isPreparing = true
             Task {
                 do {
-                    try HelperClient.prepare()
-                    helperReady = HelperClient.isReady()
+                    // Off the main actor: prepare() blocks on socket waits and, on
+                    // repair, several seconds of BTM retries.
+                    helperReady = try await Task.detached(priority: .userInitiated) {
+                        try HelperClient.prepare()
+                        return HelperClient.isReady()
+                    }.value
                     showToast(helperReady ? "Unlocked for this session" : "Finish launch setup before editing",
                               helperReady ? .ok : .error)
                 } catch HostsError.cancelled {
-                } catch { showToast(error.localizedDescription, .error) }
+                } catch { showToast(userMessage(error), .error) }
                 isPreparing = false
             }
             return .unlocked
@@ -243,7 +251,7 @@ final class HostsStore: ObservableObject {
                 // Re-derive readiness from the actual helper state: a transient
                 // hiccup keeps the session ready, a real loss demotes the UI.
                 helperReady = HelperClient.isReady()
-                showToast(error.localizedDescription, .error)
+                showToast(userMessage(error), .error)
             }
         }
     }
@@ -275,7 +283,7 @@ final class HostsStore: ObservableObject {
             } catch {
                 if gen == writeSeq { lines = previousLines; rawText = previousRaw }
                 helperReady = HelperClient.isReady()
-                showToast(error.localizedDescription, .error)
+                showToast(userMessage(error), .error)
             }
         }
     }
@@ -313,7 +321,7 @@ final class HostsStore: ObservableObject {
             try rawText.write(to: url, atomically: true, encoding: .utf8)
             showToast("Exported to \(url.lastPathComponent)", .ok)
         } catch {
-            showToast("Export failed: \(error.localizedDescription)", .error)
+            showToast("Couldn't export the file. Try a different location.", .error)
         }
     }
 
@@ -321,7 +329,7 @@ final class HostsStore: ObservableObject {
     func importHosts(from url: URL) {
         guard editingReady else { showToast("Unlock to make changes.", .error); return }
         guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-            showToast("Could not read \(url.lastPathComponent)", .error)
+            showToast("Couldn't read “\(url.lastPathComponent)”. Make sure it's a plain text hosts file.", .error)
             return
         }
         replaceAll(with: content, label: "Imported \(url.lastPathComponent)")
@@ -508,7 +516,7 @@ final class HostsStore: ObservableObject {
             } catch {
                 if gen == writeSeq { lines = previousLines; rawText = previousRaw }
                 helperReady = HelperClient.isReady()
-                showToast(error.localizedDescription, .error)
+                showToast(userMessage(error), .error)
             }
         }
     }
@@ -526,7 +534,7 @@ final class HostsStore: ObservableObject {
         do {
             try ServiceManager.registerIfNeeded()
         } catch {
-            showToast("Couldn't register helper: \(error.localizedDescription)", .error)
+            showToast("Couldn't set up the Hosts helper. Reopen Hosts and try again.", .error)
             return
         }
         switch ServiceManager.status {
@@ -539,7 +547,7 @@ final class HostsStore: ObservableObject {
             showToast("Enable “Hosts” in System Settings → Login Items", .info)
         default:
             helperRegistered = false
-            showToast("Helper is \(ServiceManager.statusDescription()).", .error)
+            showToast("Couldn't enable the Hosts helper. Reopen Hosts and try again.", .error)
         }
     }
 
@@ -558,7 +566,7 @@ final class HostsStore: ObservableObject {
             helperRegistered = false
             showToast("Privileged helper removed", .info)
         } catch {
-            showToast("Couldn't remove helper: \(error.localizedDescription)", .error)
+            showToast("Couldn't remove the Hosts helper. Remove “Hosts” from System Settings → Login Items instead.", .error)
         }
     }
 
@@ -568,12 +576,19 @@ final class HostsStore: ObservableObject {
                                       prompt: "Flush the DNS cache?")
             showToast("DNS cache flushed", .ok)
         } catch HostsError.cancelled {
-        } catch { showToast(error.localizedDescription, .error) }
+        } catch { showToast(userMessage(error), .error) }
     }
 
     // Public entry point for views (e.g. the Schemes sheet) to surface a toast on
     // the main window through the same throttled path as internal messages.
     func notify(_ msg: String, _ kind: ToastKind) { showToast(msg, kind) }
+
+    // User-facing text for a thrown error. Our own failures are HostsError and carry
+    // an actionable message; anything else (an unexpected system error) is collapsed
+    // to a safe generic line so raw system text never reaches the UI.
+    private func userMessage(_ error: Error) -> String {
+        (error as? HostsError)?.errorDescription ?? "Something went wrong. Try again."
+    }
 
     private func showToast(_ msg: String, _ kind: ToastKind) {
         withAnimation { toast = (msg, kind) }
