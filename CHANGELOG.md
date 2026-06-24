@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-06-24
+
+### Changed
+
+- Session unlock now runs its privileged-helper setup off the main thread, so the
+  UI stays responsive during the occasionally multi-second helper registration and
+  socket waits.
+
+### Fixed
+
+- **Privileged helper self-repair.** When macOS reported the helper as enabled but
+  launchd refused to launch it — a stale Background Task Management record after an
+  in-place update, surfacing as "Helper not responding after registration" — every
+  unlock dead-ended. The app now detects the enabled-but-unreachable state and
+  re-registers the helper automatically, recovering within a single unlock.
+- Helper, Touch ID, signing, DNS-flush, and import/export errors now show
+  actionable, plain-language guidance and no longer leak raw system error text; the
+  privileged daemon's failures are translated from their structured codes into
+  user-facing advice.
+
+## [1.0.4] - 2026-06-22
+
 ### Added
 
 - **In-app auto-update (Sparkle).** Hosts now checks for new versions on its own
@@ -159,7 +181,9 @@ SwiftUI app for viewing and editing `/etc/hosts`.
   control-character rejection, replay protection (timestamps + persisted nonce
   set), and a defense-in-depth peer check in the helper.
 
-[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.4...v1.0.5
+[1.0.4]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.0...v1.0.1
