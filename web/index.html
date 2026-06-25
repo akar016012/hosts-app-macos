@@ -3,13 +3,68 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hosts — a native macOS /etc/hosts editor</title>
+  <title>Hosts — /etc/hosts editor for macOS</title>
   <meta name="description" content="A native macOS SwiftUI app for editing /etc/hosts. Switch whole environments with named schemes, preview a visual diff before every write, and unlock edits with Touch ID through a signed privileged helper. No browser UI, no Node, no npm." />
+  <link rel="canonical" href="https://etc-hosts.com/" />
+  <meta name="theme-color" content="#0a0e1a" />
+
+  <!-- Open Graph -->
   <meta property="og:title" content="Hosts — native macOS /etc/hosts editor" />
   <meta property="og:description" content="One-click environment switching for /etc/hosts, visual diffs before every write, and Touch ID-gated privileged edits. Native SwiftUI. Free and open source." />
   <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://etc-hosts.com/" />
+  <meta property="og:site_name" content="Hosts" />
+  <meta property="og:image" content="https://etc-hosts.com/assets/og-card.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Hosts — a native macOS /etc/hosts editor. Free and open source." />
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Hosts — native macOS /etc/hosts editor" />
+  <meta name="twitter:description" content="One-click environment switching for /etc/hosts, visual diffs before every write, and Touch ID-gated privileged edits. Native SwiftUI. Free and open source." />
+  <meta name="twitter:image" content="https://etc-hosts.com/assets/og-card.png" />
+
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://api.github.com" />
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Structured data for Google rich results -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Hosts",
+    "description": "A native macOS SwiftUI app for editing /etc/hosts. Switch whole environments with named schemes, preview a visual diff before every write, and unlock edits with Touch ID through a signed privileged helper.",
+    "url": "https://etc-hosts.com/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS",
+    "image": "https://etc-hosts.com/assets/og-card.png",
+    "screenshot": [
+      "https://etc-hosts.com/assets/app/hosts-window.png",
+      "https://etc-hosts.com/assets/app/hosts-diff.png",
+      "https://etc-hosts.com/assets/app/hosts-unlock.png",
+      "https://etc-hosts.com/assets/app/hosts-theme-editor.png"
+    ],
+    "downloadUrl": "https://github.com/akar016012/hosts-app-macos/releases/latest/download/HostsEditor.dmg",
+    "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "Aditya Kar"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Aditya Kar"
+    }
+  }
+  </script>
 </head>
 <body>
   <div class="glow"></div>
@@ -53,7 +108,7 @@
 
       <!-- Real app window -->
       <img class="shot shot-hero reveal" src="assets/app/hosts-window.png"
-           width="1720" height="1182" loading="lazy"
+           width="1720" height="1182" loading="eager" fetchpriority="high"
            alt="The Hosts app window showing /etc/hosts entries grouped into System and Local Development, each row with an IP, hostname, and an enable toggle." />
     </div>
   </header>
