@@ -34,6 +34,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   additionally asks for confirmation everywhere it appears.
 - **Auto-lock “Never” persistence.** Choosing Never now remains selected after
   relaunch instead of silently reverting to the 30-minute default.
+- **Theme changes no longer repeat one-time launch work.** Switching themes (or
+  applying custom-theme edits) rebuilds the themed view tree by design; the
+  one-time launch setup — hosts load, update probe, and the activity event
+  monitor that feeds auto-lock — now lives outside that rebuilt subtree, so
+  monitors no longer accumulate and the file isn't reloaded on every switch.
+  Auto-unlock also re-checks session state, so users whose default unlock is
+  Touch ID no longer get a surprise biometric prompt after changing theme.
+- **Hostnames are validated in the entry editor.** A hostname containing `#`
+  previously round-tripped into a truncated hostname plus a bogus comment;
+  invalid characters and malformed labels are now rejected with an inline
+  error before anything is written to `/etc/hosts`.
 
 ### Changed
 
