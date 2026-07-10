@@ -394,6 +394,9 @@ final class HostsStore: ObservableObject {
             showToast("Unlock to make changes.", .error)
             return
         }
+        // The helper rejects \r as a control character, so CRLF content (e.g. a
+        // hosts file or scheme bundle authored on Windows) must be normalized here.
+        let content = normalizeLineEndings(content)
         let previousLines = lines
         let previousRaw = rawText
         writeSeq += 1

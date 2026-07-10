@@ -455,4 +455,21 @@ do {
     t.expectEqual(e?.comment ?? "", "bar", "round-trip hazard: text after '#' becomes comment")
 }
 
+// MARK: - 9. normalizeLineEndings
+
+t.group("normalizeLineEndings")
+
+t.expectEqual(normalizeLineEndings("127.0.0.1\tlocalhost\r\n::1\tlocalhost\r\n"),
+              "127.0.0.1\tlocalhost\n::1\tlocalhost\n", "CRLF file converts to LF")
+t.expectEqual(normalizeLineEndings("a\rb\rc"), "a\nb\nc", "lone CR converts to LF")
+t.expectEqual(normalizeLineEndings("a\r\nb\rc\n"), "a\nb\nc\n", "mixed CRLF and CR")
+t.expectEqual(normalizeLineEndings("127.0.0.1\tlocalhost\n"),
+              "127.0.0.1\tlocalhost\n", "LF-only content unchanged")
+t.expectEqual(normalizeLineEndings(""), "", "empty string unchanged")
+
+// Regression documentation: WHY this exists — the helper's validateContent
+// rejects \r as a control character, so an un-normalized CRLF import fails.
+t.expect(!normalizeLineEndings("127.0.0.1\thost\r\n").contains("\r"),
+         "normalized content carries no \\r for the helper to reject")
+
 t.summary()

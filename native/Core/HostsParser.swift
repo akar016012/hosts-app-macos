@@ -64,6 +64,15 @@ func parseEntryBody(_ body: String, enabled: Bool) -> HostEntry? {
     return HostEntry(enabled: enabled, ip: parts[0], hostnames: Array(parts.dropFirst()), comment: comment)
 }
 
+// Convert CRLF (and stray lone CR) line endings to LF. Bulk writes go through
+// this before reaching the privileged helper, whose content validation rejects
+// \r as a control character — without it, Windows-formatted hosts files fail
+// to import even though parseHosts tolerates them.
+func normalizeLineEndings(_ content: String) -> String {
+    content.replacingOccurrences(of: "\r\n", with: "\n")
+        .replacingOccurrences(of: "\r", with: "\n")
+}
+
 func parseHosts(_ raw: String) -> [HostLine] {
     var result: [HostLine] = []
     for rawLine in raw.components(separatedBy: "\n") {
