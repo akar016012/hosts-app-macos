@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Raw preview, History, and Flush DNS now work while the session is locked.**
+  Raw and History are read-only views of a world-readable file (revert and
+  clear-history inside the History sheet still require an unlocked session),
+  and Flush DNS carries its own admin-password prompt, so the session gate
+  added no protection there. This also resolves an inconsistency where the
+  ⌘K Flush DNS menu command ignored the lock the header button enforced, and
+  supersedes 1.1.0's "Flush DNS guarded when locked."
+
 ### Fixed
 
+- **The helper now backs up a non-UTF-8 `/etc/hosts` before overwriting it.**
+  The pre-write backup read the file as UTF-8 text and silently skipped the
+  backup when decoding failed — exactly the hand-edited file that most needs
+  one. Backups are now taken as raw bytes (preserved verbatim) and are
+  fail-closed: if an existing hosts file can't be backed up, the write is
+  refused.
+- The Lock pill's tooltip while unlocked read "Locked edits — click to lock
+  now"; it now reads "Lock edits — click to lock now."
 - **Windows (CRLF) hosts files can now be imported.** Bulk writes — file
   import and scheme apply — normalize `\r\n` (and stray `\r`) to `\n` before
   reaching the privileged helper, whose validation rejects `\r` as a control
