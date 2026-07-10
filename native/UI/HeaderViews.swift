@@ -64,6 +64,7 @@ struct LockPill: View {
     @ObservedObject var store: HostsStore
     @Binding var showPinUnlock: Bool
     @Binding var showPinSetup: Bool
+    @Binding var showPasswordUnlock: Bool
     var onUnlock: () -> Void
 
     var body: some View {
@@ -94,10 +95,13 @@ struct LockPill: View {
                 Button("Unlock with PIN…") { showPinUnlock = true }
                 if store.sessionUnlocked {
                     Button("Change PIN…") { showPinSetup = true }
-                    Button("Remove PIN") { store.removePIN() }
+                    Button("Remove PIN") { confirmRemovePIN(store: store) }
                 }
             } else if store.sessionUnlocked {
                 Button("Set up PIN…") { showPinSetup = true }
+            }
+            if !store.sessionUnlocked {
+                Button("Unlock with macOS Password…") { showPasswordUnlock = true }
             }
             Divider()
             Menu("Default unlock") {

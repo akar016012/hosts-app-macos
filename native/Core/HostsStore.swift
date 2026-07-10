@@ -3,6 +3,8 @@
 
 import Darwin
 import Foundation
+import LocalAuthentication
+import OpenDirectory
 import SwiftUI
 
 // MARK: - Store
@@ -10,12 +12,21 @@ import SwiftUI
 // How the Locked pill behaves when clicked: ask each time, or jump straight to a
 // preferred method. Persisted in UserDefaults.
 enum UnlockMethod: String, CaseIterable {
-    case ask, touchID, pin
+    case ask, touchID, pin, password
     var label: String {
         switch self {
         case .ask: return "Ask each time"
         case .touchID: return "Touch ID"
         case .pin: return "PIN"
+        case .password: return "macOS Password"
+        }
+    }
+    // Compact variant for tight controls (segmented pickers).
+    var shortLabel: String {
+        switch self {
+        case .ask: return "Ask"
+        case .password: return "Password"
+        default: return label
         }
     }
 }
@@ -53,12 +64,8 @@ final class HostsStore: ObservableObject {
     @Published var statusByIP: [String: HostStatus] = [:]
     @Published var history: [HostSnapshot] = []
 
-    static let autoLockKey = "autoLockMinutes"
-    @Published var autoLockMinutes: Int = {
-        let stored = UserDefaults.standard.integer(forKey: HostsStore.autoLockKey)
-        return stored == 0 ? 30 : stored
-    }() {
-        didSet { UserDefaults.standard.set(autoLockMinutes, forKey: HostsStore.autoLockKey) }
+    @Published var autoLockMinutes = AutoLockPreferences.load() {
+        didSet { UserDefaults.standard.set(autoLockMinutes, forKey: AutoLockPreferences.key) }
     }
     private var lastActivityDate = Date()
     private var inactivityTimer: Timer?
@@ -187,7 +194,10 @@ final class HostsStore: ObservableObject {
     // MARK: PIN unlock (alternative to Touch ID)
 
     // Saves a new PIN. Returns a user-facing error message, or nil on success.
+    // Changing an existing PIN requires an unlocked session; setting the first
+    // PIN (or one after a reset) is the bootstrap path and stays open.
     func setPIN(_ pin: String) -> String? {
+        guard !pinSet || sessionUnlocked else { return "Unlock to change your PIN." }
         if let reason = PinStore.validate(pin) { return reason }
         do {
             try PinStore.set(pin)
@@ -200,6 +210,7 @@ final class HostsStore: ObservableObject {
     }
 
     func removePIN() {
+        guard sessionUnlocked else { nudgeLocked(); return }
         PinStore.clear()
         pinSet = false
         showToast("PIN removed", .info)
@@ -219,24 +230,90 @@ final class HostsStore: ObservableObject {
                 ? "Incorrect PIN — \(remaining) attempt\(remaining == 1 ? "" : "s") left."
                 : "Incorrect PIN.")
         case .ok:
-            sessionUnlocked = true
-            isPreparing = true
-            Task {
-                do {
-                    // Off the main actor: prepare() blocks on socket waits and, on
-                    // repair, several seconds of BTM retries.
-                    helperReady = try await Task.detached(priority: .userInitiated) {
-                        try HelperClient.prepare()
-                        return HelperClient.isReady()
-                    }.value
-                    showToast(helperReady ? "Unlocked for this session" : "Finish launch setup before editing",
-                              helperReady ? .ok : .error)
-                } catch HostsError.cancelled {
-                } catch { showToast(userMessage(error), .error) }
-                isPreparing = false
-            }
+            beginUnlockedSession()
             return .unlocked
         }
+    }
+
+    // Unlocks this session with the macOS login password — the escape hatch for
+    // Macs without Touch ID when the PIN is forgotten or locked out. Returns
+    // false on a wrong password so the caller can keep the sheet open.
+    func unlockWithLoginPassword(_ password: String) -> Bool {
+        guard !isPreparing else { return false }
+        guard Self.verifyLoginPassword(password) else { return false }
+        beginUnlockedSession()
+        return true
+    }
+
+    // Shared success path for the PIN and login-password unlocks: opens the
+    // session and installs/validates the privileged helper.
+    private func beginUnlockedSession() {
+        sessionUnlocked = true
+        isPreparing = true
+        Task {
+            do {
+                // Off the main actor: prepare() blocks on socket waits and, on
+                // repair, several seconds of BTM retries.
+                helperReady = try await Task.detached(priority: .userInitiated) {
+                    try HelperClient.prepare()
+                    return HelperClient.isReady()
+                }.value
+                showToast(helperReady ? "Unlocked for this session" : "Finish launch setup before editing",
+                          helperReady ? .ok : .error)
+            } catch HostsError.cancelled {
+            } catch { showToast(userMessage(error), .error) }
+            isPreparing = false
+        }
+    }
+
+    // Forgot-PIN escape hatch, Touch ID flavor: prove device ownership via the
+    // system authentication panel, then wipe the PIN record and its lockout
+    // state. Does NOT unlock the session — the user sets a new PIN afterwards
+    // and unlocks normally.
+    func resetForgottenPIN() async -> Bool {
+        let context = LAContext()
+        context.localizedFallbackTitle = "Enter Password…"
+        var probeError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &probeError) else {
+            showToast("Can't authenticate on this Mac right now", .error)
+            return false
+        }
+        do {
+            try await context.evaluatePolicy(.deviceOwnerAuthentication,
+                                             localizedReason: "reset your Hosts PIN")
+        } catch {
+            // User cancelled or authentication failed — leave everything as is.
+            return false
+        }
+        completePINReset()
+        return true
+    }
+
+    // Forgot-PIN escape hatch, password flavor: verifies the macOS login
+    // password of the current user directly (the LAContext panel on some macOS
+    // versions leads with Touch ID and hides the password fallback, so the UI
+    // offers this as an explicit option). Returns false on a wrong password so
+    // the caller can re-prompt.
+    func resetForgottenPIN(loginPassword: String) -> Bool {
+        guard Self.verifyLoginPassword(loginPassword) else { return false }
+        completePINReset()
+        return true
+    }
+
+    private func completePINReset() {
+        PinStore.clear()
+        pinSet = false
+        showToast("PIN reset — set a new PIN", .info)
+    }
+
+    private static func verifyLoginPassword(_ password: String) -> Bool {
+        guard !password.isEmpty,
+              let node = try? ODNode(session: ODSession.default(),
+                                     type: ODNodeType(kODNodeTypeAuthentication)),
+              let record = try? node.record(withRecordType: kODRecordTypeUsers,
+                                            name: NSUserName(), attributes: nil)
+        else { return false }
+        return (try? record.verifyPassword(password)) != nil
     }
 
     // "45s" / "2m" / "1m 30s" for lockout messaging.

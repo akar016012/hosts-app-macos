@@ -153,9 +153,15 @@ struct ProfileMenu: View {
                 sectionLabel("SECURITY")
                 autoLockRow
                 if store.pinSet {
-                    menuRow("Change PIN", icon: "number.square.fill") { present { showPinSetup = true } }
-                    menuRow("Remove PIN", icon: "trash", danger: true) { store.removePIN() }
-                } else {
+                    // Managing an existing PIN requires an unlocked session —
+                    // same gate as the LockPill context menu.
+                    if store.sessionUnlocked {
+                        menuRow("Change PIN", icon: "number.square.fill") { present { showPinSetup = true } }
+                        menuRow("Remove PIN", icon: "trash", danger: true) {
+                            close(); confirmRemovePIN(store: store)
+                        }
+                    }
+                } else if store.sessionUnlocked {
                     menuRow("Set up a PIN", icon: "number.square.fill") { present { showPinSetup = true } }
                 }
                 menuRow("Reset session key", icon: "arrow.triangle.2.circlepath") {
@@ -173,7 +179,7 @@ struct ProfileMenu: View {
             }
             .disabled(!updater.canCheckForUpdates)
         }
-        .padding(6).frame(width: 290)
+        .padding(6).frame(width: 330)
         .background(Theme.surface.opacity(0.95))
         .background(.ultraThinMaterial)
     }
@@ -268,7 +274,8 @@ struct ProfileMenu: View {
             Image(systemName: "lock.rotation").font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Theme.textDim).frame(width: 18)
             Text("Default unlock").font(.system(size: 13.5, weight: .semibold)).foregroundColor(Theme.text)
-            Spacer()
+                .lineLimit(1).fixedSize()
+            Spacer(minLength: 8)
             Picker("", selection: $store.defaultUnlock) {
                 ForEach(UnlockMethod.allCases, id: \.self) { Text($0.label).tag($0) }
             }

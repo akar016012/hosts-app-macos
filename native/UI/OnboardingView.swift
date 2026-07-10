@@ -178,7 +178,7 @@ struct OnboardingView: View {
             advantageCard("rectangle.3.group", "Switch environments",
                           "Save local, staging, QA, and blocklists as schemes — switch in one click.")
             advantageCard("lock.shield", "Safe by default",
-                          "Privileged writes to /etc/hosts are gated by Touch ID or a PIN.")
+                          "Privileged writes to /etc/hosts are gated by Touch ID, a PIN, or your macOS password.")
             advantageCard("clock.arrow.circlepath", "Undo anything",
                           "Every change is snapshotted — roll back to any version in a click.")
             advantageCard("square.and.pencil", "No terminal",
@@ -226,26 +226,38 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("DEFAULT UNLOCK").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundColor(Theme.textDim)
                 Picker("", selection: $store.defaultUnlock) {
-                    ForEach(UnlockMethod.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(UnlockMethod.allCases, id: \.self) { Text($0.shortLabel).tag($0) }
                 }
                 .labelsHidden().pickerStyle(.segmented)
                 Text(store.touchIDAvailable
-                     ? "Touch ID is available on this Mac. A PIN is a handy backup."
-                     : "Touch ID isn't available here — set a PIN to unlock edits.")
+                     ? "Touch ID is available on this Mac. A PIN or your macOS login password also works."
+                     : "Touch ID isn't available here — use your macOS login password, or set a PIN below.")
                     .font(.system(size: 11.5)).foregroundColor(Theme.textDim)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("SET A PIN (OPTIONAL)").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundColor(Theme.textDim)
-                HStack(spacing: 10) {
-                    onboardPinField("PIN", text: $pin)
-                    onboardPinField("CONFIRM", text: $confirm)
-                }
-                if let pinError {
-                    Text(pinError).font(.system(size: 11.5)).foregroundColor(Theme.red)
-                } else {
-                    Text("\(PinStore.minLength)–\(PinStore.maxLength) digits. Leave blank to skip.")
+            // On a tour replay with a PIN already set, changing it requires an
+            // unlocked session (store guard) — point at the profile menu instead
+            // of offering fields that would be rejected.
+            if store.pinSet {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("PIN").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundColor(Theme.textDim)
+                    Text("A PIN is already set. Change or remove it from the profile menu\(store.sessionUnlocked ? "" : " after unlocking").")
                         .font(.system(size: 11.5)).foregroundColor(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("SET A PIN (OPTIONAL)").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundColor(Theme.textDim)
+                    HStack(spacing: 10) {
+                        onboardPinField("PIN", text: $pin)
+                        onboardPinField("CONFIRM", text: $confirm)
+                    }
+                    if let pinError {
+                        Text(pinError).font(.system(size: 11.5)).foregroundColor(Theme.red)
+                    } else {
+                        Text("\(PinStore.minLength)–\(PinStore.maxLength) digits. Leave blank to skip.")
+                            .font(.system(size: 11.5)).foregroundColor(Theme.textDim)
+                    }
                 }
             }
         }
