@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **macOS password unlock.** The session can now be unlocked with the Mac login
+  password — a third option alongside Touch ID and PIN, so Macs without Touch ID
+  (or with a forgotten PIN) are never locked out. Available as a card in the
+  unlock chooser, a "macOS Password" choice in the Default-unlock preference
+  (profile menu, Settings, Lock pill, onboarding), and an "Unlock with macOS
+  Password…" item in the Lock pill's context menu. The password is verified
+  locally against the user's account via OpenDirectory and is never stored.
+- **"Forgot PIN?" reset.** The PIN unlock sheet now offers a recovery path: after
+  explaining that macOS authentication is required while locked, it verifies
+  device ownership (login password, or Touch ID where available) and then clears
+  the PIN record and its brute-force lockout state. The reset does not unlock the
+  session — the user sets a new PIN and unlocks normally. This also recovers from
+  a corrupt PIN record and from an active lockout.
+
+### Fixed
+
+- **PIN change/removal no longer possible while locked (session-lock bypass).**
+  Settings (⌘,), the profile menu, and the PIN sheet all allowed replacing or
+  removing the PIN without unlocking, letting anyone at the keyboard swap in
+  their own PIN and unlock. Changing or removing an existing PIN now requires an
+  unlocked session at every entry point, backed by fail-closed guards in the
+  store itself; first-time setup remains available while locked. "Remove PIN"
+  additionally asks for confirmation everywhere it appears.
+- **Auto-lock “Never” persistence.** Choosing Never now remains selected after
+  relaunch instead of silently reverting to the 30-minute default.
+
+### Changed
+
+- The profile dropdown is slightly wider so the Default-unlock row fits the new
+  "macOS Password" option on one line, and onboarding's unlock picker uses
+  compact segment labels. Onboarding also skips the PIN fields when a PIN
+  already exists (replayed tours), pointing at the profile menu instead.
+
 ## [1.1.0] - 2026-06-24
 
 ### Added

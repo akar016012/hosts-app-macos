@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var showingHistory = false
     @State private var showingSchemes = false
     @State private var showPinUnlock = false
+    @State private var showPasswordUnlock = false
     @State private var showPinSetup = false
     @State private var showUnlockChooser = false
     @State private var showProfile = false
@@ -104,8 +105,15 @@ struct ContentView: View {
         .sheet(isPresented: $showingRaw) { RawEditor(text: store.rawText) }
         .sheet(isPresented: $showingHistory) { HistorySheet(store: store) }
         .sheet(isPresented: $showingSchemes) { SchemesSheet(store: store) }
-        .sheet(isPresented: $showPinUnlock) { PinUnlockSheet(store: store) }
+        .sheet(isPresented: $showPinUnlock) {
+            // After a forgot-PIN reset, chain into the setup sheet (same delay
+            // trick as the unlock chooser below) so the user sets a new PIN.
+            PinUnlockSheet(store: store, onReset: {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { showPinSetup = true }
+            })
+        }
         .sheet(isPresented: $showPinSetup) { PinSetupSheet(store: store) }
+        .sheet(isPresented: $showPasswordUnlock) { PasswordUnlockSheet(store: store) }
         .sheet(isPresented: $showProfileEdit) { ProfileEditSheet() }
         .sheet(isPresented: $showThemeEditor) { CustomThemeSheet() }
         .sheet(isPresented: $showUnlockChooser) {
@@ -113,7 +121,8 @@ struct ContentView: View {
             // sheet (PIN entry) is presented, avoiding a SwiftUI sheet conflict.
             UnlockChooserSheet(store: store,
                                onTouchID: { store.unlockSession() },
-                               onPIN: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: presentPIN) })
+                               onPIN: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: presentPIN) },
+                               onPassword: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { showPasswordUnlock = true } })
         }
         .onReceive(NotificationCenter.default.publisher(for: .hpNewEntry)) { _ in
             guarded { editorEntry = nil; showingEditor = true }
@@ -126,7 +135,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .hpHistory)) { _ in guarded { showingHistory = true } }
         .onReceive(NotificationCenter.default.publisher(for: .hpSchemes)) { _ in guarded { showingSchemes = true } }
         .onReceive(NotificationCenter.default.publisher(for: .hpFlushDNS)) { _ in store.flushDNS() }
-        .onReceive(NotificationCenter.default.publisher(for: .hpManagePIN)) { _ in showPinSetup = true }
+        .onReceive(NotificationCenter.default.publisher(for: .hpManagePIN)) { _ in
+            // Changing an existing PIN requires an unlocked session; a first-time
+            // setup is the bootstrap path and stays open.
+            if store.pinSet && !store.sessionUnlocked { store.nudgeLocked() }
+            else { showPinSetup = true }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .hpEditTheme)) { _ in showThemeEditor = true }
         .onReceive(NotificationCenter.default.publisher(for: .hpUnregister)) { _ in store.unregisterHelper() }
     }
@@ -161,6 +175,7 @@ struct ContentView: View {
         switch store.defaultUnlock {
         case .touchID: store.unlockSession()
         case .pin: presentPIN()
+        case .password: showPasswordUnlock = true
         case .ask: showUnlockChooser = true
         }
     }
@@ -186,7 +201,8 @@ struct ContentView: View {
 
             UpdatePill()
 
-            LockPill(store: store, showPinUnlock: $showPinUnlock, showPinSetup: $showPinSetup, onUnlock: handleUnlockTap)
+            LockPill(store: store, showPinUnlock: $showPinUnlock, showPinSetup: $showPinSetup,
+                     showPasswordUnlock: $showPasswordUnlock, onUnlock: handleUnlockTap)
 
             Button { guarded { store.flushDNS() } } label: { Label("Flush DNS", systemImage: "arrow.triangle.2.circlepath") }
                 .buttonStyle(SoftButton())

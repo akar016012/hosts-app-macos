@@ -320,7 +320,52 @@ do {
 PinStore.clear()
 t.expect(!PinStore.isSet, "PinStore: isSet false after clear")
 
-// MARK: - 7. HostsDiff (scheme apply / revert preview)
+// clear() also wipes lockout/attempt state — the forgot-PIN reset path relies on
+// this so a locked-out user isn't still throttled after setting a new PIN.
+do {
+    try! PinStore.set("4242")
+    for _ in 0..<PinStore.maxAttempts { _ = PinStore.verify("0000") } // drive into lockout
+    if case .lockedOut = PinStore.verify("4242") {
+        t.expect(true, "clear: precondition — locked out before reset")
+    } else { t.expect(false, "clear: precondition — locked out before reset") }
+    PinStore.clear()
+    t.expect(!PinStore.isSet, "clear: record gone after reset during lockout")
+    try! PinStore.set("7777")
+    if case .wrong(let r) = PinStore.verify("0000") {
+        t.expectEqual(r, PinStore.maxAttempts - 1, "clear: attempts state wiped — new PIN starts with full attempts")
+    } else { t.expect(false, "clear: first wrong on new PIN -> .wrong (not lockedOut)") }
+    if case .ok = PinStore.verify("7777") {
+        t.expect(true, "clear: new PIN verifies immediately after reset")
+    } else { t.expect(false, "clear: new PIN verifies immediately after reset") }
+}
+
+// clear() with nothing set is a harmless no-op
+PinStore.clear()
+PinStore.clear()
+t.expect(!PinStore.isSet, "clear: no-op when nothing is set")
+
+// MARK: - 7. AutoLockPreferences
+
+t.group("AutoLockPreferences")
+
+do {
+    let suiteName = "com.etchosts.hostseditor.tests.autolock.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    t.expectEqual(AutoLockPreferences.load(from: defaults), 30,
+                  "load: missing preference uses 30-minute default")
+
+    defaults.set(0, forKey: AutoLockPreferences.key)
+    t.expectEqual(AutoLockPreferences.load(from: defaults), 0,
+                  "load: persisted zero preserves Never")
+
+    defaults.set(15, forKey: AutoLockPreferences.key)
+    t.expectEqual(AutoLockPreferences.load(from: defaults), 15,
+                  "load: persisted nonzero timeout is unchanged")
+}
+
+// MARK: - 8. HostsDiff (scheme apply / revert preview)
 
 t.group("HostsDiff")
 

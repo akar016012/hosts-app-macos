@@ -14,6 +14,7 @@ BIN="$BUILD_DIR/hosts-tests"
 # Only the Core files the tests actually exercise — kept minimal so we don't drag
 # in SwiftUI/AppKit-dependent sources (HostsStore, HelperClient, etc.).
 CORE_SOURCES=(
+  Core/AutoLockPreferences.swift
   Core/HostsParser.swift
   Core/HostsModel.swift
   Core/HostsHistory.swift
