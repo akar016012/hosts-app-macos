@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Aditya Kar
 
+import AppKit
 import Darwin
 import Foundation
 import LocalAuthentication
@@ -69,6 +70,10 @@ final class HostsStore: ObservableObject {
     }
     private var lastActivityDate = Date()
     private var inactivityTimer: Timer?
+    // Handle for the app-lifetime local event monitor that feeds the auto-lock
+    // inactivity clock. Owned by the store (not view @State) so theme-driven view
+    // rebuilds can never orphan or duplicate it.
+    private var activityMonitor: Any?
 
     enum ToastKind { case ok, error, info }
     let path = "/etc/hosts"
@@ -77,6 +82,17 @@ final class HostsStore: ObservableObject {
     init() { startInactivityTimer() }
 
     func resetActivityTimer() { lastActivityDate = Date() }
+
+    // Installs the activity monitor exactly once per app lifetime; safe to call again.
+    func installActivityMonitor() {
+        guard activityMonitor == nil else { return }
+        activityMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]
+        ) { event in
+            HostsStore.shared.resetActivityTimer()
+            return event
+        }
+    }
 
     private func startInactivityTimer() {
         inactivityTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
@@ -183,11 +199,14 @@ final class HostsStore: ObservableObject {
         (try? SigningKey.ensureTouchIDAvailable()) != nil
     }
 
-    // Called once on launch: auto-unlock only when the user has explicitly chosen
-    // Touch ID as their default. Users who never picked a preference (.ask) are left
-    // locked to unlock deliberately, rather than being surprised by a biometric
-    // prompt thrown at them the instant the app opens.
+    // Auto-unlock only when the user has explicitly chosen Touch ID as their
+    // default. Users who never picked a preference (.ask) are left locked to
+    // unlock deliberately, rather than being surprised by a biometric prompt
+    // thrown at them the instant the app opens. May be re-invoked (e.g. a
+    // @Published replay after a view rebuild), so it self-guards: never
+    // re-prompt when a session is already live or being prepared.
     func autoUnlockIfPreferred() {
+        guard !sessionUnlocked, !isPreparing else { return }
         if defaultUnlock == .touchID { unlockSession() }
     }
 

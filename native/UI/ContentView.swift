@@ -6,6 +6,36 @@ import SwiftUI
 
 // MARK: - Root view
 
+// Stable root hosting the theme-keyed ContentView. ContentView keys its whole
+// subtree on the theme (.id(...)) so a theme switch tears it down and rebuilds
+// it with fresh palette colors — anything that must happen exactly once per app
+// lifetime therefore lives HERE, outside that identity boundary, where it
+// survives theme changes.
+struct RootView: View {
+    @ObservedObject private var onboarding = OnboardingStore.shared
+    @State private var didRunInitialSetup = false
+
+    var body: some View {
+        ContentView()
+            .onAppear {
+                guard !didRunInitialSetup else { return }
+                didRunInitialSetup = true
+                HostsStore.shared.load()
+                UpdaterManager.shared.probeForUpdate()
+                HostsStore.shared.installActivityMonitor()
+            }
+            // Auto-unlock only once onboarding is done — this fires with the
+            // current value on first subscribe (covering returning users) and
+            // again when the walkthrough finishes, so the launch Touch ID prompt
+            // never appears behind the overlay. This view is never rebuilt on
+            // theme change, so the replay can't re-trigger a prompt (and
+            // autoUnlockIfPreferred self-guards besides).
+            .onReceive(onboarding.$completed) { done in
+                if done { HostsStore.shared.autoUnlockIfPreferred() }
+            }
+    }
+}
+
 struct ContentView: View {
     @ObservedObject private var store = HostsStore.shared
     @ObservedObject private var themeStore = ThemeStore.shared
@@ -24,8 +54,6 @@ struct ContentView: View {
     @State private var showProfile = false
     @State private var showProfileEdit = false
     @State private var showThemeEditor = false
-    @State private var didRunInitialSetup = false
-    @State private var eventMonitor: Any?
     @FocusState private var searchFocused: Bool
 
     private var visible: [HostEntry] {
@@ -74,27 +102,14 @@ struct ContentView: View {
         .environment(\.colorScheme, activePalette.isLight ? .light : .dark)
         .tint(activePalette.accent)
         .accentColor(activePalette.accent)
+        // Re-syncs NSApp.appearance on every rebuild — including the .id()-forced
+        // ones for revision-only custom-theme Applies, which the $theme onReceive
+        // below doesn't cover.
         .onAppear {
             applyThemeAppearance(activeTheme)
-            guard !didRunInitialSetup else { return }
-            didRunInitialSetup = true
-            store.load()
-            UpdaterManager.shared.probeForUpdate()
-            eventMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]
-            ) { event in
-                HostsStore.shared.resetActivityTimer()
-                return event
-            }
         }
         .onReceive(themeStore.$theme) { newTheme in
             applyThemeAppearance(newTheme)
-        }
-        // Auto-unlock only once onboarding is done — this fires with the current
-        // value on appear (covering returning users) and again when the walkthrough
-        // finishes, so the launch Touch ID prompt never appears behind the overlay.
-        .onReceive(onboarding.$completed) { done in
-            if done { store.autoUnlockIfPreferred() }
         }
         .sheet(isPresented: $showingEditor) {
             EntryEditor(entry: editorEntry) { ip, hosts, comment, enabled in

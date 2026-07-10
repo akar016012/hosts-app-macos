@@ -26,6 +26,32 @@ func looksLikeIP(_ s: String) -> Bool {
     }
 }
 
+// Validates a single hostname token typed in the entry editor. Returns a
+// user-facing problem description, or nil when the token is safe to write to
+// /etc/hosts. Pragmatic RFC-952/1123: letters, digits, hyphen, dot — plus
+// underscore, which is common in real hosts files. Anything outside that set
+// (notably '#', which the parser reads as a comment marker, silently corrupting
+// the entry on the next load) is rejected. Labels are 1–63 chars, must not
+// begin or end with '-', and the whole name caps at 253 chars.
+func validateHostname(_ token: String) -> String? {
+    if token.isEmpty { return "Enter at least one hostname." }
+    if token.contains("#") { return "Hostnames can't contain “#” — use the comment field instead." }
+    if token.utf8.count > 253 { return "“\(token)” is too long (253 characters max)." }
+    for label in token.split(separator: ".", omittingEmptySubsequences: false) {
+        if label.isEmpty { return "“\(token)” has an empty dot-separated part." }
+        if label.utf8.count > 63 { return "“\(token)” has a part longer than 63 characters." }
+        if label.hasPrefix("-") || label.hasSuffix("-") {
+            return "“\(token)” has a part that starts or ends with “-”."
+        }
+        for scalar in label.unicodeScalars {
+            let ok = (scalar >= "a" && scalar <= "z") || (scalar >= "A" && scalar <= "Z")
+                || (scalar >= "0" && scalar <= "9") || scalar == "-" || scalar == "_"
+            if !ok { return "“\(token)” contains an invalid character (“\(scalar)”)." }
+        }
+    }
+    return nil
+}
+
 func parseEntryBody(_ body: String, enabled: Bool) -> HostEntry? {
     var comment = ""
     var main = body

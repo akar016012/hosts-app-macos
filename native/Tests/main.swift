@@ -424,4 +424,35 @@ do {
     t.expectEqual(toEmpty.removed, 3, "diff: content -> empty is 3 removed")
 }
 
+// MARK: - 8. validateHostname
+
+t.group("validateHostname")
+
+t.expect(validateHostname("localhost") == nil, "valid: bare hostname")
+t.expect(validateHostname("example.com") == nil, "valid: two labels")
+t.expect(validateHostname("www.example-site.co.uk") == nil, "valid: hyphens and multiple labels")
+t.expect(validateHostname("my_host.local") == nil, "valid: underscore allowed")
+t.expect(validateHostname("a1.b2.c3") == nil, "valid: digits in labels")
+t.expect(validateHostname(String(repeating: "a", count: 63) + ".com") == nil, "valid: 63-char label")
+t.expect(validateHostname("foo#bar") != nil, "invalid: '#' (the round-trip corruption bug)")
+t.expect(validateHostname("foo,bar") != nil, "invalid: comma")
+t.expect(validateHostname("foo/bar") != nil, "invalid: slash")
+t.expect(validateHostname("héllo.com") != nil, "invalid: non-ASCII")
+t.expect(validateHostname("-foo.com") != nil, "invalid: leading hyphen in label")
+t.expect(validateHostname("foo-.com") != nil, "invalid: trailing hyphen in label")
+t.expect(validateHostname("foo..bar") != nil, "invalid: empty label")
+t.expect(validateHostname(".foo") != nil, "invalid: leading dot")
+t.expect(validateHostname("foo.") != nil, "invalid: trailing dot")
+t.expect(validateHostname(String(repeating: "a", count: 64) + ".com") != nil, "invalid: 64-char label")
+t.expect(validateHostname(String(repeating: "a.", count: 127) + "toolong") != nil, "invalid: >253 chars total")
+t.expect(validateHostname("") != nil, "invalid: empty token")
+
+// Regression documentation: WHY '#' must be rejected — a '#' written into a
+// hostname is re-read as a comment on the next parse, silently mangling the entry.
+do {
+    let e = parseEntryBody("127.0.0.1\tfoo#bar", enabled: true)
+    t.expectEqual(e?.hostnames ?? [], ["foo"], "round-trip hazard: '#' splits hostname into comment")
+    t.expectEqual(e?.comment ?? "", "bar", "round-trip hazard: text after '#' becomes comment")
+}
+
 t.summary()
