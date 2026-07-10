@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-09
+
 ### Added
 
 - **macOS password unlock.** The session can now be unlocked with the Mac login
@@ -261,7 +263,8 @@ SwiftUI app for viewing and editing `/etc/hosts`.
   control-character rejection, replay protection (timestamps + persisted nonce
   set), and a defense-in-depth peer check in the helper.
 
-[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.5...v1.1.0
 [1.0.5]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.3...v1.0.4
