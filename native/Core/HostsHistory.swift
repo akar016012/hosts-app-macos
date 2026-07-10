@@ -68,7 +68,7 @@ enum HistoryStore {
         ioQueue.async {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             guard let data = try? JSONEncoder().encode(snaps) else { return }
-            try? data.write(to: fileURL)
+            try? data.write(to: fileURL, options: .atomic)
         }
     }
 }

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows (CRLF) hosts files can now be imported.** Bulk writes — file
+  import and scheme apply — normalize `\r\n` (and stray `\r`) to `\n` before
+  reaching the privileged helper, whose validation rejects `\r` as a control
+  character. Previously such files failed with the misleading "Those entries
+  can't be saved — remove any unusual characters."
+- **Change history is written atomically.** `history.json` was saved with a
+  plain write, so a crash or power loss mid-save could truncate it and
+  silently wipe the entire undo history on the next launch.
+
 ## [1.2.0] - 2026-07-09
 
 ### Added

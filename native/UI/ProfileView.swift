@@ -281,6 +281,10 @@ struct ProfileMenu: View {
             }
             .labelsHidden().pickerStyle(.menu).fixedSize()
             .tint(Theme.accent)
+            // Constant-width slot: while its menu is open the NSPopUpButton
+            // re-measures to its widest item, and letting that reach the layout
+            // resizes the popover and shifts the whole container sideways.
+            .frame(width: 150, alignment: .trailing)
         }
         .padding(.horizontal, 12).frame(height: 40)
     }
@@ -303,6 +307,8 @@ struct ProfileMenu: View {
             }
             .labelsHidden().pickerStyle(.menu).fixedSize()
             .tint(Theme.accent)
+            // Same fixed-slot trick as the unlock picker above.
+            .frame(width: 100, alignment: .trailing)
         }
         .padding(.horizontal, 12).frame(height: 40)
     }
