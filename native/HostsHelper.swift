@@ -260,9 +260,19 @@ func pruneBackups(keep: Int = 20) {
 func writeHosts(content: String) throws {
     try? FileManager.default.createDirectory(atPath: BACKUP_DIR, withIntermediateDirectories: true,
                                              attributes: [.posixPermissions: 0o700])
-    if let current = try? String(contentsOfFile: HOSTS_PATH, encoding: .utf8) {
+    // Back up as raw bytes (not UTF-8 text) so a hand-edited or non-UTF-8 file is
+    // preserved verbatim — and fail closed: never overwrite an existing hosts file
+    // whose backup couldn't be taken.
+    if FileManager.default.fileExists(atPath: HOSTS_PATH) {
+        guard let current = try? Data(contentsOf: URL(fileURLWithPath: HOSTS_PATH)) else {
+            throw WriteError(message: "could not read existing hosts file for backup")
+        }
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        try? current.write(toFile: "\(BACKUP_DIR)/hosts-\(stamp).bak", atomically: true, encoding: .utf8)
+        do {
+            try current.write(to: URL(fileURLWithPath: "\(BACKUP_DIR)/hosts-\(stamp).bak"), options: .atomic)
+        } catch {
+            throw WriteError(message: "could not create backup: \(error.localizedDescription)")
+        }
         pruneBackups()
     }
 

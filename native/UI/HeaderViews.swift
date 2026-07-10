@@ -89,7 +89,7 @@ struct LockPill: View {
             .clipShape(RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(.plain)
-        .help(unlocked ? "Locked edits — click to lock now" : "Unlock edits for this session")
+        .help(unlocked ? "Lock edits — click to lock now" : "Unlock edits for this session")
         .contextMenu {
             if store.pinSet {
                 Button("Unlock with PIN…") { showPinUnlock = true }

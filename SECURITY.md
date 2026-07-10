@@ -64,8 +64,11 @@ The helper does not trust the app because of who is talking to it; it trusts a
   reset to `root:wheel`. Input is bounded to **8 MB** and rejected if it contains
   control characters that have no business in a hosts file.
 - **Automatic backups.** Before each write the helper copies the current
-  `/etc/hosts` to a timestamped file under
+  `/etc/hosts` — as raw bytes, so even a non-UTF-8 file is preserved verbatim —
+  to a timestamped file under
   `/Library/Application Support/HostsHelper/backups/`, keeping the most recent 20.
+  The backup is fail-closed: if an existing hosts file can't be read or the
+  backup can't be written, the write is refused.
 
 ## Session unlock
 

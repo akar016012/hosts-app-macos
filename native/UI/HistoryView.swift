@@ -49,8 +49,9 @@ struct HistorySheet: View {
                 Label("Clear history", systemImage: "trash")
             }
             .buttonStyle(SoftButton())
-            .disabled(store.history.count <= 1)
-            .help("Remove all saved versions except the current file")
+            .disabled(store.history.count <= 1 || !store.editingReady)
+            .help(store.editingReady ? "Remove all saved versions except the current file"
+                                     : "Unlock the session to clear history")
             Button("Close") { dismiss() }.buttonStyle(SoftButton())
                 .keyboardShortcut(.cancelAction)
         }

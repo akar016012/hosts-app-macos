@@ -146,8 +146,8 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .hpExport)) { _ in exportHosts() }
         .onReceive(NotificationCenter.default.publisher(for: .hpUndo)) { _ in store.undoLast() }
         .onReceive(NotificationCenter.default.publisher(for: .hpFind)) { _ in searchFocused = true }
-        .onReceive(NotificationCenter.default.publisher(for: .hpRaw)) { _ in guarded { showingRaw = true } }
-        .onReceive(NotificationCenter.default.publisher(for: .hpHistory)) { _ in guarded { showingHistory = true } }
+        .onReceive(NotificationCenter.default.publisher(for: .hpRaw)) { _ in showingRaw = true }
+        .onReceive(NotificationCenter.default.publisher(for: .hpHistory)) { _ in showingHistory = true }
         .onReceive(NotificationCenter.default.publisher(for: .hpSchemes)) { _ in guarded { showingSchemes = true } }
         .onReceive(NotificationCenter.default.publisher(for: .hpFlushDNS)) { _ in store.flushDNS() }
         .onReceive(NotificationCenter.default.publisher(for: .hpManagePIN)) { _ in
@@ -219,18 +219,18 @@ struct ContentView: View {
             LockPill(store: store, showPinUnlock: $showPinUnlock, showPinSetup: $showPinSetup,
                      showPasswordUnlock: $showPasswordUnlock, onUnlock: handleUnlockTap)
 
-            Button { guarded { store.flushDNS() } } label: { Label("Flush DNS", systemImage: "arrow.triangle.2.circlepath") }
+            // Flush DNS, History, and Raw stay available while locked: the flush
+            // has its own admin-password prompt, and the other two are read-only
+            // views of a world-readable file (revert is gated inside the sheet).
+            Button { store.flushDNS() } label: { Label("Flush DNS", systemImage: "arrow.triangle.2.circlepath") }
                 .buttonStyle(SoftButton())
-                .opacity(store.editingReady ? 1 : 0.5)
             Button { guarded { showingSchemes = true } } label: { Label("Schemes", systemImage: "rectangle.3.group") }
                 .buttonStyle(SoftButton())
                 .opacity(store.editingReady ? 1 : 0.5)
-            Button { guarded { showingHistory = true } } label: { Label("History", systemImage: "clock.arrow.circlepath") }
+            Button { showingHistory = true } label: { Label("History", systemImage: "clock.arrow.circlepath") }
                 .buttonStyle(SoftButton())
-                .opacity(store.editingReady ? 1 : 0.5)
-            Button { guarded { showingRaw = true } } label: { Label("Raw", systemImage: "chevron.left.forwardslash.chevron.right") }
+            Button { showingRaw = true } label: { Label("Raw", systemImage: "chevron.left.forwardslash.chevron.right") }
                 .buttonStyle(SoftButton())
-                .opacity(store.editingReady ? 1 : 0.5)
             Button { guarded { editorEntry = nil; showingEditor = true } } label: { Label("New", systemImage: "plus") }
                 .buttonStyle(PrimaryButton())
                 .opacity(store.editingReady ? 1 : 0.5)
