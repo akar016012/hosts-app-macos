@@ -93,6 +93,9 @@ struct EntryEditor: View {
         let hostList = hosts.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
         if !looksLikeIP(trimmedIP) { error = "Enter a valid IPv4/IPv6 address."; return }
         if hostList.isEmpty { error = "Enter at least one hostname."; return }
+        for host in hostList {
+            if let problem = validateHostname(host) { error = problem; return }
+        }
         onSave(trimmedIP, hostList, comment.trimmingCharacters(in: .whitespaces), enabled)
         dismiss()
     }
