@@ -80,7 +80,7 @@
         <a href="#features">Features</a>
         <a href="#security">Security</a>
         <a href="#install">Install</a>
-        <a class="nav-cta" href="https://github.com/akar016012/hosts-app-macos" target="_blank" rel="noopener">View source</a>
+        <a class="nav-cta" href="https://github.com/akar016012/hosts-app-macos/releases/latest/download/HostsEditor.dmg">Download</a>
       </div>
     </div>
   </nav>
@@ -91,9 +91,9 @@
       <h1>Edit <span class="grad">/etc/hosts</span><br />the way it deserves.</h1>
       <p class="sub">A native macOS app that turns hostname juggling into one-click environment switching — with a visual diff before every write and Touch&nbsp;ID-gated privileged edits.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#install">
+        <a class="btn btn-primary" href="https://github.com/akar016012/hosts-app-macos/releases/latest/download/HostsEditor.dmg">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
-          Build from source
+          Download for macOS
         </a>
         <a class="btn btn-ghost" href="https://github.com/akar016012/hosts-app-macos" target="_blank" rel="noopener">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.36-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.36 9.36 0 015 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.01 10.01 0 0022 12.25C22 6.58 17.52 2 12 2z"/></svg>
@@ -101,7 +101,7 @@
         </a>
       </div>
       <div class="hero-meta">
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> No browser UI</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Signed &amp; notarized</span>
         <span><svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> No Node or npm</span>
         <span><svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Reversible writes</span>
       </div>
@@ -124,14 +124,19 @@
       <div class="demo-wrap reveal">
         <div class="demo-glow"></div>
         <div class="demo-frame">
+          <!-- No `autoplay`: the 10 MB file would download on page load even for
+               visitors who never scroll here. JS below starts it (muted) once the
+               section is actually in view, unless the user prefers reduced motion. -->
           <video
+            id="tour-video"
             src="assets/video/hosts-tour.mp4"
             poster="assets/video/hosts-tour-poster.png"
-            autoplay
+            preload="metadata"
             muted
             loop
             playsinline
             controls
+            aria-label="Guided video tour of the Hosts app"
           ></video>
         </div>
         <div class="demo-cap">Recorded from Hosts running on macOS · Midnight theme</div>
@@ -321,6 +326,18 @@ open HostsEditor.app</div>
       entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
     }, { threshold: 0.12 });
     document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+    // Autoplay the tour only once it's on screen (and pause it off screen), so
+    // the 10 MB video never downloads for visitors who don't reach the demo.
+    const video = document.getElementById('tour-video');
+    if (video && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) video.play().catch(() => {});
+          else video.pause();
+        });
+      }, { threshold: 0.3 }).observe(video);
+    }
 
     // ---- Live download count (GitHub Releases API, public/no-auth) ----
     // Each visitor's browser queries from its own IP, so the 60 req/hr
