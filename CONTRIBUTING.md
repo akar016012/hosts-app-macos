@@ -24,13 +24,15 @@ license to it.
 
 ## Building
 
+Open `etc-hosts.xcodeproj` in Xcode and press **⌘B**, or from the command line:
+
 ```bash
-cd native
-./build.sh
+xcodebuild -project etc-hosts.xcodeproj -scheme etc-hosts -configuration Debug build
 ```
 
-The build compiles all app sources and the helper, bundles them, generates the
-icon, and signs the result. It produces `native/HostsEditor.app` (a build
+The build compiles the app and the helper (two targets), embeds the helper and
+its launchd plist into the bundle, pulls in Sparkle via Swift Package Manager,
+and signs the result. It produces `HostsEditor.app` in DerivedData (a build
 artifact — it is not tracked in git).
 
 ### Signing identity
@@ -38,32 +40,28 @@ artifact — it is not tracked in git).
 `SMAppService` refuses to register an **ad-hoc–signed** daemon, so the bundle must
 be signed with a real signing identity. A **free Apple Development certificate**
 (from a free Apple ID "Personal Team" in Xcode) is enough to build and run
-locally. See [`docs/build-from-source.md`](docs/build-from-source.md) for the full
+locally — select **your own team** under **Signing & Capabilities** for both
+targets (they must match), or override it per build with
+`xcodebuild … DEVELOPMENT_TEAM=YOURTEAMID build`. See
+[`docs/build-from-source.md`](docs/build-from-source.md) for the full
 walkthrough.
 
-Override the identity used by the build with `SIGN_IDENTITY`:
-
-```bash
-SIGN_IDENTITY="Apple Development: you@example.com (TEAMID)" ./build.sh
-```
-
-The build uses a hardened runtime (`codesign --options runtime`).
+The build uses a hardened runtime.
 
 ## Running tests
 
 ```bash
-bash native/test.sh
+bash scripts/test.sh
 ```
 
-The runner compiles the suite with plain `swiftc` into `native/.build-test/`
+The runner compiles the suite with plain `swiftc` into `.build-test/`
 (gitignored) and runs it in isolation. Add or update tests for any new logic in
 `Core/`.
 
 ## Running the app
 
-```bash
-open native/HostsEditor.app
-```
+Run from Xcode (**⌘R**), or `open` the built `HostsEditor.app` from the products
+directory.
 
 On first launch you'll be guided through onboarding (profile, theme, unlock
 method) and asked to approve the helper in System Settings → Login Items. See
@@ -72,14 +70,16 @@ uninstall/repair procedure.
 
 ## Code layout
 
-- **`native/Core/`** — pure logic: hosts parsing and grouping, the data model,
+- **`etc-hosts/Core/`** — pure logic: hosts parsing and grouping, the data model,
   history, profile/PIN stores, the session signing key, the privileged-helper
   client, and the `SMAppService` lifecycle wrapper. No SwiftUI here.
-- **`native/UI/`** — SwiftUI screens, sheets, row components, themes, button
+- **`etc-hosts/UI/`** — SwiftUI screens, sheets, row components, themes, button
   styles, and menu commands.
-- **`native/HostsHelper.swift`** — the privileged root LaunchDaemon. It validates
-  signed requests and is the only component that writes `/etc/hosts`.
-- **`native/build.sh`** — the build/sign/bundle script.
+- **`HostsHelper/main.swift`** — the privileged root LaunchDaemon (its own Xcode
+  target). It validates signed requests and is the only component that writes
+  `/etc/hosts`.
+- **`etc-hosts.xcodeproj`** — the Xcode project that builds, bundles, and signs
+  both targets.
 
 Keep logic in `Core/` and presentation in `UI/`. Anything security-relevant
 (signing, the helper protocol, write validation) deserves extra review — see

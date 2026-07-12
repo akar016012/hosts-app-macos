@@ -3,9 +3,10 @@
 
 import Foundation
 
-// A tiny zero-dependency assertion harness. We don't use XCTest because the app
-// is compiled directly with swiftc (no SwiftPM/Xcode), so there's no test bundle
-// host. The runner tracks failures and exits non-zero if any assertion fails.
+// A tiny zero-dependency assertion harness. We don't use XCTest because the
+// suite is compiled standalone with swiftc (see test.sh), so there's no test
+// bundle host. The runner tracks failures and exits non-zero if any assertion
+// fails.
 final class TestRunner {
     private(set) var passed = 0
     private(set) var failed = 0

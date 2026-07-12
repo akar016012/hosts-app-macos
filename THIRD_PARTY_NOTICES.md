@@ -8,7 +8,7 @@ is reproduced in full below as required by its terms.
 ## Sparkle 2.9.3
 
 **Used for:** automatic update delivery in the distributed binary build.
-Downloaded and checksum-verified at build time by `native/build.sh`; not
+Resolved via Swift Package Manager and embedded by Xcode at build time; not
 committed to this repository.
 
 **Source:** <https://github.com/sparkle-project/Sparkle>

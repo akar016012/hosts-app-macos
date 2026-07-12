@@ -1,12 +1,12 @@
 #!/bin/bash
 # Standalone unit-test runner for the pure-logic Core sources.
 #
-# The app is built directly with swiftc (no SwiftPM/Xcode), so the tests are too:
+# The tests use a lightweight custom harness compiled directly with swiftc:
 # we compile the relevant Core .swift files together with the Tests/ sources into
 # a single executable that has its own main.swift entry point. The app's @main in
 # HostsEditor.swift is deliberately NOT included (it would clash with our main).
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 BUILD_DIR=".build-test"
 BIN="$BUILD_DIR/hosts-tests"
@@ -14,12 +14,12 @@ BIN="$BUILD_DIR/hosts-tests"
 # Only the Core files the tests actually exercise — kept minimal so we don't drag
 # in SwiftUI/AppKit-dependent sources (HostsStore, HelperClient, etc.).
 CORE_SOURCES=(
-  Core/AutoLockPreferences.swift
-  Core/HostsParser.swift
-  Core/HostsModel.swift
-  Core/HostsHistory.swift
-  Core/HostsDiff.swift
-  Core/PinStore.swift
+  etc-hosts/Core/AutoLockPreferences.swift
+  etc-hosts/Core/HostsParser.swift
+  etc-hosts/Core/HostsModel.swift
+  etc-hosts/Core/HostsHistory.swift
+  etc-hosts/Core/HostsDiff.swift
+  etc-hosts/Core/PinStore.swift
 )
 TEST_SOURCES=(
   Tests/TestRunner.swift

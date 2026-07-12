@@ -12,7 +12,7 @@ domain ever changes.
 ```
 web/
 ├── index.html      # the page (incl. SEO meta + JSON-LD structured data)
-├── styles.css      # all styles (CSS variables mirror native/UI/Theme.swift)
+├── styles.css      # all styles (CSS variables mirror etc-hosts/UI/Theme.swift)
 ├── server.cjs      # tiny static server for local preview
 ├── robots.txt      # allows all crawlers, points to the sitemap
 ├── sitemap.xml     # single-URL sitemap for the apex

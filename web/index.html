@@ -260,30 +260,28 @@
       <div class="sec-head reveal">
         <div class="eyebrow">One click, or about five minutes</div>
         <h2>Download the signed app — or build it yourself</h2>
-        <p>The fastest path is the notarized <code>.dmg</code> above: drag to Applications and open, no Xcode, no Gatekeeper "unidentified developer" wall. Prefer to build from source? You can sign it with your <b>own</b> free signing certificate (any Apple ID, no paid Developer Program); it just needs <b>Xcode</b> (free) once to create the certificate.</p>
+        <p>The fastest path is the notarized <code>.dmg</code> above: drag to Applications and open, no build step, no Gatekeeper "unidentified developer" wall. Prefer to build from source? Open the project in <b>Xcode</b> (free) and sign it with your <b>own</b> free signing certificate — any Apple ID works, no paid Developer Program needed.</p>
       </div>
       <div class="dmg-soon reveal" role="note">
         <div class="dmg-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg></div>
         <div class="dmg-text">
           <h3>Prefer a one-click install? Download the signed <code>.dmg</code>.</h3>
-          <p>A notarized disk image for drag-and-drop installation — no Xcode, no certificate, no build step. Or build from source below.</p>
+          <p>A notarized disk image for drag-and-drop installation — no certificate, no build step. Or build from source below.</p>
         </div>
         <a class="btn btn-primary" href="https://github.com/akar016012/hosts-app-macos/releases/latest/download/HostsEditor.dmg">Download for macOS</a>
       </div>
       <p class="dl-stat" id="dl-stat" aria-live="polite"><strong id="dl-count"></strong> downloads and counting</p>
       <div class="steps">
         <div class="step reveal"><div class="num">1</div><h3>Create a free certificate</h3><p>In <b>Xcode → Settings → Accounts</b>, sign in with any Apple ID to provision a free <b>Apple Development</b> certificate. No paid Developer Program needed.</p></div>
-        <div class="step reveal"><div class="num">2</div><h3>Add your identity</h3><p>Copy your identity from <code>security find-identity</code> into a <code>native/.signid</code> file. It's git-ignored, so it's never committed — the build signs with it.</p></div>
-        <div class="step reveal"><div class="num">3</div><h3>Build &amp; unlock</h3><p>Run <code>./build.sh</code> to compile and sign the app and helper, then open it and enable the helper once in Login Items.</p></div>
+        <div class="step reveal"><div class="num">2</div><h3>Select your team</h3><p>Open <code>etc-hosts.xcodeproj</code> and pick your team under <b>Signing &amp; Capabilities</b> for both targets. Signing is automatic — Xcode uses your free certificate.</p></div>
+        <div class="step reveal"><div class="num">3</div><h3>Build &amp; unlock</h3><p>Press <b>⌘R</b> (or run <code>xcodebuild</code>) to compile and sign the app and helper, then enable the helper once in Login Items.</p></div>
       </div>
       <div class="code reveal"><span class="c"># 1. get the source</span>
 git clone https://github.com/akar016012/hosts-app-macos.git
-cd hosts-app-macos/native
-<span class="c"># 2. tell the build your signing identity (copy the "Apple Development: …" string)</span>
-security find-identity -v -p codesigning
-<span class="p">echo</span> <span class="s">'Apple Development: you@example.com (TEAMID)'</span> &gt; .signid
-<span class="c"># 3. build (signs with your identity) &amp; run</span>
-<span class="p">./build.sh</span>   <span class="c"># → creates native/HostsEditor.app</span>
+cd hosts-app-macos
+<span class="c"># 2. build (Xcode signs with your team's certificate automatically)</span>
+<span class="p">xcodebuild</span> -project etc-hosts.xcodeproj -scheme etc-hosts -configuration Debug build
+<span class="c"># 3. run the built app (or just press ⌘R in Xcode)</span>
 open HostsEditor.app</div>
       <p class="code-more"><a href="https://github.com/akar016012/hosts-app-macos/blob/main/docs/build-from-source.md" target="_blank" rel="noopener">Full build &amp; signing guide →</a></p>
     </div>
@@ -345,7 +343,7 @@ open HostsEditor.app</div>
     })();
 
     // ---- Theme switcher ----
-    // The same palettes that ship in the app (native/UI/Theme.swift). Structural
+    // The same palettes that ship in the app (etc-hosts/UI/Theme.swift). Structural
     // tokens are verbatim; textDim/textMut and the semantic colors are run through
     // the app's WCAG contrast-tuning so every theme stays legible on its own bg.
     const THEMES = {
