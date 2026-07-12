@@ -4,6 +4,16 @@ A native macOS SwiftUI app for viewing and editing `/etc/hosts`: switch whole
 environments with named schemes, add, edit, enable/disable, delete entries,
 search/filter, preview the raw file, and flush the macOS DNS cache.
 
+## Demo
+
+A guided tour of the real app — from first-run onboarding to schemes, visual
+diffs, DNS flush, Touch ID unlock, and the custom theme editor.
+
+<video src="https://etc-hosts.com/assets/video/hosts-tour.mp4" poster="https://etc-hosts.com/assets/video/hosts-tour-poster.png" controls muted playsinline width="720"></video>
+
+_Recorded from Hosts running on macOS (Midnight theme). If the player doesn't
+load, [watch it on the website](https://etc-hosts.com/#demo)._
+
 ## Features
 
 - **Schemes** — save named `/etc/hosts` environments (Local dev, Staging, QA,
