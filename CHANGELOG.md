@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-12
+
 ### Changed
 
 - **Redesigned onboarding flow.** Steps now slide in the direction of travel
@@ -52,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Change history is written atomically.** `history.json` was saved with a
   plain write, so a crash or power loss mid-save could truncate it and
   silently wipe the entire undo history on the next launch.
+
+### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- Aditya Kar ([@akar016012](https://github.com/akar016012)) — #36, #37, #38
 
 ## [1.2.0] - 2026-07-09
 
@@ -309,7 +317,8 @@ SwiftUI app for viewing and editing `/etc/hosts`.
   control-character rejection, replay protection (timestamps + persisted nonce
   set), and a defense-in-depth peer check in the helper.
 
-[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.5...v1.1.0
 [1.0.5]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.4...v1.0.5
