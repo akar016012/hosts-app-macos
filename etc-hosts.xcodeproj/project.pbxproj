@@ -50,6 +50,7 @@
 /* Begin PBXFileReference section */
 		CAFE000100000000000000A1 /* com.etchosts.hostshelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = com.etchosts.hostshelper; sourceTree = BUILT_PRODUCTS_DIR; };
 		CAFE000100000000000000B4 /* com.etchosts.hostshelper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = com.etchosts.hostshelper.plist; path = HostsHelper/com.etchosts.hostshelper.plist; sourceTree = "<group>"; };
+		CAFE000300000000000000E2 /* HostsEditorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HostsEditorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB959AA83003CC3100FFDF01 /* HostsEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HostsEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -61,6 +62,18 @@
 			);
 			target = DB959AA73003CC3100FFDF01 /* etc-hosts */;
 		};
+		CAFE000300000000000000E8 /* Exceptions for "etc-hosts" folder in "HostsEditorTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Core/AutoLockPreferences.swift,
+				Core/HostsDiff.swift,
+				Core/HostsHistory.swift,
+				Core/HostsModel.swift,
+				Core/HostsParser.swift,
+				Core/PinStore.swift,
+			);
+			target = CAFE000300000000000000E0 /* HostsEditorTests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -69,10 +82,21 @@
 			path = HostsHelper;
 			sourceTree = "<group>";
 		};
+		CAFE000200000000000000D9 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		CAFE000300000000000000E1 /* Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests;
+			sourceTree = "<group>";
+		};
 		DB959AAA3003CC3100FFDF01 /* etc-hosts */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				CAFE000100000000000000A9 /* Exceptions for "etc-hosts" folder in "etc-hosts" target */,
+				CAFE000300000000000000E8 /* Exceptions for "etc-hosts" folder in "HostsEditorTests" target */,
 			);
 			path = "etc-hosts";
 			sourceTree = "<group>";
@@ -81,6 +105,13 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		CAFE000100000000000000A5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAFE000300000000000000E4 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -103,6 +134,7 @@
 			children = (
 				DB959AAA3003CC3100FFDF01 /* etc-hosts */,
 				CAFE000100000000000000A2 /* HostsHelper */,
+				CAFE000200000000000000D9 /* Shared */,
 				CAFE000100000000000000B4 /* com.etchosts.hostshelper.plist */,
 				DB959AA93003CC3100FFDF01 /* Products */,
 			);
@@ -113,6 +145,7 @@
 			children = (
 				DB959AA83003CC3100FFDF01 /* HostsEditor.app */,
 				CAFE000100000000000000A1 /* com.etchosts.hostshelper */,
+				CAFE000300000000000000E2 /* HostsEditorTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -120,6 +153,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		CAFE000300000000000000E0 /* HostsEditorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CAFE000300000000000000E5 /* Build configuration list for PBXNativeTarget "HostsEditorTests" */;
+			buildPhases = (
+				CAFE000300000000000000E3 /* Sources */,
+				CAFE000300000000000000E4 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CAFE000300000000000000E1 /* Tests */,
+				CAFE000200000000000000D9 /* Shared */,
+			);
+			name = HostsEditorTests;
+			packageProductDependencies = (
+			);
+			productName = HostsEditorTests;
+			productReference = CAFE000300000000000000E2 /* HostsEditorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		CAFE000100000000000000A0 /* HostsHelper */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CAFE000100000000000000A6 /* Build configuration list for PBXNativeTarget "HostsHelper" */;
@@ -133,6 +188,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				CAFE000100000000000000A2 /* HostsHelper */,
+				CAFE000200000000000000D9 /* Shared */,
 			);
 			name = HostsHelper;
 			packageProductDependencies = (
@@ -157,6 +213,7 @@
 				CAFE000100000000000000B1 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				CAFE000200000000000000D9 /* Shared */,
 				DB959AAA3003CC3100FFDF01 /* etc-hosts */,
 			);
 			name = "etc-hosts";
@@ -178,6 +235,9 @@
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					CAFE000100000000000000A0 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					CAFE000300000000000000E0 = {
 						CreatedOnToolsVersion = 26.6;
 					};
 					DB959AA73003CC3100FFDF01 = {
@@ -204,6 +264,7 @@
 			targets = (
 				DB959AA73003CC3100FFDF01 /* etc-hosts */,
 				CAFE000100000000000000A0 /* HostsHelper */,
+				CAFE000300000000000000E0 /* HostsEditorTests */,
 			);
 		};
 /* End PBXProject section */
@@ -220,6 +281,13 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		CAFE000100000000000000A4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAFE000300000000000000E3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -244,6 +312,36 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		CAFE000300000000000000E6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3J6QGH6H9F;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.etchosts.hostseditor.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		CAFE000300000000000000E7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3J6QGH6H9F;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.etchosts.hostseditor.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		CAFE000100000000000000A7 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -465,6 +563,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		CAFE000300000000000000E5 /* Build configuration list for PBXNativeTarget "HostsEditorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CAFE000300000000000000E6 /* Debug */,
+				CAFE000300000000000000E7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		CAFE000100000000000000A6 /* Build configuration list for PBXNativeTarget "HostsHelper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

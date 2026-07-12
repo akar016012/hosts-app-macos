@@ -51,12 +51,12 @@ The build uses a hardened runtime.
 ## Running tests
 
 ```bash
-bash scripts/test.sh
+xcodebuild test -project etc-hosts.xcodeproj -scheme etc-hosts
 ```
 
-The runner compiles the suite with plain `swiftc` into `.build-test/`
-(gitignored) and runs it in isolation. Add or update tests for any new logic in
-`Core/`.
+Or **⌘U** in Xcode. The `HostsEditorTests` bundle uses Swift Testing and runs
+against a throwaway home directory set by the shared scheme. Add or update
+tests in `Tests/` for any new logic in `Core/`.
 
 ## Running the app
 

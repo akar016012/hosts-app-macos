@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Aditya Kar
 
+import CommonCrypto
 import CryptoKit
 import Foundation
 import Security
@@ -9,17 +10,24 @@ import Security
 
 // An alternative to Touch ID for unlocking the edit session — useful on Macs
 // without Touch ID, or when biometrics are unavailable/locked out. The PIN is
-// never stored: only a random-salted, iterated SHA-256 digest in a 0600 file
+// never stored: only a random-salted PBKDF2-HMAC-SHA256 digest in a 0600 file
 // beside the signing key. Like Touch ID, the PIN is purely an app-level gate on
 // `sessionUnlocked`; the privileged write itself is still authorized by the
 // file-based signing key, so the PIN never weakens the helper's trust model.
+// Records written before 1.4 used an iterated-SHA256 digest; those still verify
+// and are transparently rehashed to PBKDF2 on the first successful unlock.
 enum PinStore {
     static let minLength = 4
     static let maxLength = 12
     static let maxAttempts = 5
-    private static let iterations = 250_000
+    // OWASP-recommended (2023) PBKDF2-HMAC-SHA256 work factor; ~150–300 ms,
+    // acceptable for an interactive PIN prompt.
+    private static let iterations = 600_000
+    private static let pbkdf2Name = "pbkdf2-hmac-sha256"
 
-    private struct Record: Codable { let salt: Data; let hash: Data; let iterations: Int }
+    // `kdf` is nil in records written by the legacy iterated-SHA256 scheme
+    // (synthesized Codable decodes old JSON with nil), and pbkdf2Name in new ones.
+    private struct Record: Codable { let salt: Data; let hash: Data; let iterations: Int; let kdf: String? }
     // Persisted brute-force throttle: consecutive failures and an optional lockout
     // deadline. Kept beside the PIN digest (0600) so it survives relaunches.
     private struct Attempts: Codable { var failed: Int; var lockedUntil: Date? }
@@ -52,7 +60,10 @@ enum PinStore {
         let ok = salt.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
         guard ok == errSecSuccess else { throw HostsError.failed("Couldn't save your PIN. Try again.") }
 
-        let record = Record(salt: salt, hash: digest(pin, salt: salt, rounds: iterations), iterations: iterations)
+        guard let hash = pbkdf2(pin, salt: salt, rounds: iterations) else {
+            throw HostsError.failed("Couldn't save your PIN. Try again.")
+        }
+        let record = Record(salt: salt, hash: hash, iterations: iterations, kdf: pbkdf2Name)
         let data = try JSONEncoder().encode(record)
         let dir = (path as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true,
@@ -76,13 +87,23 @@ enum PinStore {
               let record = try? JSONDecoder().decode(Record.self, from: data) else {
             return .wrong(remaining: max(0, maxAttempts - attempts.failed))
         }
-        let candidate = digest(pin, salt: record.salt, rounds: record.iterations)
+        // Legacy records (kdf == nil) verify through the old iterated-SHA256 digest;
+        // an unrecognized kdf yields an empty candidate that can never compare equal.
+        let candidate: Data
+        switch record.kdf {
+        case pbkdf2Name: candidate = pbkdf2(pin, salt: record.salt, rounds: record.iterations) ?? Data()
+        case nil:        candidate = digest(pin, salt: record.salt, rounds: record.iterations)
+        default:         candidate = Data()
+        }
         // Constant-time compare so verification time doesn't leak how many bytes matched.
         var diff: UInt8 = candidate.count == record.hash.count ? 0 : 1
         for (a, b) in zip(candidate, record.hash) { diff |= a ^ b }
 
         if diff == 0 {
             saveAttempts(Attempts(failed: 0, lockedUntil: nil))
+            // Transparent upgrade: rehash a legacy record under PBKDF2 now that the
+            // plaintext PIN is in hand. Best-effort — the old record stays valid.
+            if record.kdf == nil { try? set(pin) }
             return .ok
         }
 
@@ -125,8 +146,26 @@ enum PinStore {
         try? FileManager.default.removeItem(atPath: attemptsPath)
     }
 
-    // Salt-prefixed SHA-256, iterated to make brute-forcing a short numeric PIN
-    // costly even if the digest file leaks.
+    // PBKDF2-HMAC-SHA256 via CommonCrypto, 32-byte derived key. Returns nil only
+    // if CCKeyDerivationPBKDF rejects the parameters (shouldn't happen for ours).
+    private static func pbkdf2(_ pin: String, salt: Data, rounds: Int) -> Data? {
+        var key = Data(count: 32)
+        let status = key.withUnsafeMutableBytes { keyBytes in
+            salt.withUnsafeBytes { saltBytes in
+                CCKeyDerivationPBKDF(
+                    CCPBKDFAlgorithm(kCCPBKDF2),
+                    pin, pin.utf8.count,
+                    saltBytes.bindMemory(to: UInt8.self).baseAddress, salt.count,
+                    CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                    UInt32(max(1, rounds)),
+                    keyBytes.bindMemory(to: UInt8.self).baseAddress, keyBytes.count)
+            }
+        }
+        return status == Int32(kCCSuccess) ? key : nil
+    }
+
+    // Legacy KDF (pre-1.4 records): salt-prefixed SHA-256, iterated. Kept only to
+    // verify old records before their transparent upgrade to PBKDF2.
     private static func digest(_ pin: String, salt: Data, rounds: Int) -> Data {
         var acc = salt + Data(pin.utf8)
         for _ in 0..<max(1, rounds) { acc = Data(SHA256.hash(data: acc)) }

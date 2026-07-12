@@ -17,7 +17,7 @@ and how to delete it.
 |------|-------|---------|
 | App preferences | `~/Library/Preferences/com.etchosts.hostseditor.plist` | Onboarding completion, local profile name/email, selected theme, custom theme data, unlock method preference |
 | Change history | `~/Library/Application Support/HostsEditor/history.json` | In-app history of edits, capped at 50 snapshots; used for one-click revert |
-| PIN digest | `~/Library/Application Support/HostsEditor/pin.json` | Salted, iterated SHA-256 digest of your optional app PIN. The PIN itself is never stored. |
+| PIN digest | `~/Library/Application Support/HostsEditor/pin.json` | Salted PBKDF2-HMAC-SHA256 digest of your optional app PIN. The PIN itself is never stored. |
 | Session signing key | `~/Library/Application Support/HostsEditor/session-signing.key` | ECDSA P-256 private key used to sign write requests to the privileged helper. Owner-only (`0600`). Never leaves your Mac. |
 
 ### Helper data (root-owned, `/Library/`)

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **PIN digests now use PBKDF2-HMAC-SHA256** (600,000 rounds, per OWASP
+  guidance) instead of the previous hand-rolled iterated-SHA256 scheme.
+  Existing PINs keep working and are transparently rehashed on the first
+  successful unlock. Note: once rehashed, older builds can no longer verify
+  the PIN — if you downgrade, use the "forgot PIN" reset to set it again.
+
 ## [1.3.0] - 2026-07-12
 
 ### Changed

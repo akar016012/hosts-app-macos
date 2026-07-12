@@ -75,8 +75,10 @@ The helper does not trust the app because of who is talking to it; it trusts a
 Editing is gated behind a per-session unlock, by either:
 
 - **Touch ID**, when available and enrolled; or
-- **A PIN**, stored only as a random-salted, 250,000-iteration SHA-256 digest in
-  an owner-only (`0600`) file. The PIN itself is never stored. Verification is a
+- **A PIN**, stored only as a random-salted, 600,000-round PBKDF2-HMAC-SHA256
+  digest in an owner-only (`0600`) file (legacy iterated-SHA256 digests are
+  transparently rehashed on first unlock). The PIN itself is never stored.
+  Verification is a
   constant-time compare, and wrong attempts trigger a persisted lockout with
   escalating backoff (starting at 30s, doubling, capped at 1 hour).
 

@@ -45,7 +45,7 @@ keeps state, and how to remove or repair it. For the security rationale see
 | Path | Purpose |
 | --- | --- |
 | `~/Library/Application Support/HostsEditor/session-signing.key` | Owner-only (`0600`) private key used to sign write requests. |
-| `~/Library/Application Support/HostsEditor/pin.json` | Salted, iterated PIN digest (the PIN itself is never stored). |
+| `~/Library/Application Support/HostsEditor/pin.json` | Salted PBKDF2 PIN digest (the PIN itself is never stored). |
 | `~/Library/Application Support/HostsEditor/pin-attempts.json` | PIN failure count and lockout deadline. |
 | `~/Library/Application Support/HostsEditor/history.json` | In-app change history (recent snapshots). |
 
@@ -58,7 +58,8 @@ App preferences (onboarding state, profile, theme, default unlock method) live i
   app uses to talk to the helper.
 - **Log:** `/var/log/hostshelper.log` — the helper's standard-error log
   (`StandardErrorPath` in the launchd plist). Useful for diagnosing enrollment or
-  write failures.
+  write failures. The same lines also go to the unified logging system:
+  `log stream --predicate 'subsystem == "com.etchosts.hostshelper"'`.
 
 ## Verifying the helper
 
