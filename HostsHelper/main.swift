@@ -28,11 +28,11 @@ import Security
 import CryptoKit
 import SystemConfiguration
 import Darwin
+import os
 
-// Protocol version this daemon speaks. The app (Core/Helper.swift) carries a
-// mirrored `Helper.protocolVersion` — the two MUST stay in sync; bump both
-// together whenever the wire format changes.
-let HELPER_PROTOCOL_VERSION = 1
+// Protocol version this daemon speaks, shared with the app via
+// Shared/HelperProtocol.swift (compiled into both targets).
+let HELPER_PROTOCOL_VERSION = HelperProtocol.version
 // Human-readable helper build/version string. Keep matching the app bundle's
 // CFBundleShortVersionString.
 let HELPER_VERSION = "1.0"
@@ -41,9 +41,9 @@ let HELPER_VERSION = "1.0"
 // which the daemon's launching context could otherwise influence to redirect the
 // write target or swap the trust anchor.
 let HOSTS_PATH  = "/etc/hosts"
-let SOCK_PATH   = "/var/run/com.etchosts.hostshelper.sock"
-let PUBKEY_PATH = "/Library/Application Support/HostsHelper/pubkey"
-let UID_PATH    = "/Library/Application Support/HostsHelper/uid"
+let SOCK_PATH   = HelperProtocol.socketPath
+let PUBKEY_PATH = HelperProtocol.pubkeyPath
+let UID_PATH    = HelperProtocol.uidPath
 let BACKUP_DIR  = "/Library/Application Support/HostsHelper/backups"
 // Highest accepted request timestamp, persisted root-owned so replay protection
 // survives a daemon restart/reboot (in-memory nonces are lost on restart).
@@ -59,7 +59,18 @@ let MAX_CONTENT_BYTES = 8_000_000
 // would be truncated mid-read and misreported as malformed. Headroom over base64.
 let MAX_REQUEST_BYTES = 12_000_000
 
-func log(_ s: String) { FileHandle.standardError.write(("[hostshelper] " + s + "\n").data(using: .utf8)!) }
+// Unified logging sink. Declared above log() because top-level code in main.swift
+// initializes in source order — log() runs during the top-level `let` bindings
+// below (e.g. loadPublicKey), so this must already exist by then.
+let logger = Logger(subsystem: "com.etchosts.hostshelper", category: "daemon")
+
+// Dual-emit: os.Logger (Console.app / `log stream`) plus the original stderr line,
+// byte-identical, because launchd's StandardErrorPath routes stderr to the
+// documented /var/log/hostshelper.log.
+func log(_ s: String, level: OSLogType = .default) {
+    logger.log(level: level, "\(s, privacy: .public)")
+    FileHandle.standardError.write(("[hostshelper] " + s + "\n").data(using: .utf8)!)
+}
 
 // Stringify a CFError without force-unwrapping: SecKey/SecCode APIs are not
 // contractually required to populate the out-error on failure, so a nil error
@@ -79,13 +90,9 @@ func loadPublicKey() -> SecKey? {
     ]
     var err: Unmanaged<CFError>?
     guard let key = SecKeyCreateWithData(raw as CFData, attrs as CFDictionary, &err) else {
-        log("pubkey import failed: \(cfErrorString(err))"); return nil
+        log("pubkey import failed: \(cfErrorString(err))", level: .error); return nil
     }
     return key
-}
-
-func canonicalMessage(ts: Int, nonce: String, contentB64: String) -> Data {
-    Data("hostshelper-v1\n\(ts)\n\(nonce)\n\(contentB64)".utf8)
 }
 
 // The uid permitted to drive the daemon, recorded at install time. nil if the
@@ -124,7 +131,7 @@ func peerAuthorized(_ peerUID: uid_t, _ authUID: uid_t?) -> Bool {
 // guarantees that). If our own team can't be determined (e.g. an unsigned/ad-hoc
 // dev build, which SMAppService won't register anyway) there is nothing to pin
 // against, so we fall back to the uid + signature gates rather than brick the app.
-let CLIENT_BUNDLE_ID = "com.etchosts.hostseditor"
+let CLIENT_BUNDLE_ID = HelperProtocol.clientBundleID
 
 // getsockopt level/name for a Unix-socket peer's audit token, from <sys/un.h>.
 // Not surfaced by the Swift Darwin overlay, so define the raw values here.
@@ -172,16 +179,16 @@ func peerCodeAuthorized(_ fd: Int32, peerUID: uid_t) -> Bool {
         return true
     }
     guard let token = peerAuditToken(fd), let code = peerSecCode(from: token) else {
-        log("could not obtain peer code; rejecting"); return false
+        log("could not obtain peer code; rejecting", level: .error); return false
     }
     let reqStr = "anchor apple generic and identifier \"\(CLIENT_BUNDLE_ID)\" "
         + "and certificate leaf[subject.OU] = \"\(team)\""
     var req: SecRequirement?
     guard SecRequirementCreateWithString(reqStr as CFString, [], &req) == errSecSuccess, let req else {
-        log("could not build code requirement; rejecting"); return false
+        log("could not build code requirement; rejecting", level: .error); return false
     }
     let status = SecCodeCheckValidity(code, [], req)
-    if status != errSecSuccess { log("peer failed code requirement (status \(status))") }
+    if status != errSecSuccess { log("peer failed code requirement (status \(status))", level: .error) }
     return status == errSecSuccess
 }
 
@@ -231,7 +238,7 @@ func persistEnrollment(pubData: Data, uid: uid_t) -> Bool {
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: UID_PATH)
         return true
     } catch {
-        log("enroll persist failed: \(error)"); return false
+        log("enroll persist failed: \(error)", level: .error); return false
     }
 }
 
@@ -416,7 +423,7 @@ func handle(_ requestData: Data, peerUID: uid_t) -> String {
     if ts < lastAcceptedTs - 90 { return errReply("replayed_timestamp", "replayed timestamp") }
     if recentNonces.contains(nonce) { return errReply("replayed_nonce", "replayed nonce") }
 
-    let msg = canonicalMessage(ts: ts, nonce: nonce, contentB64: contentB64)
+    let msg = HelperProtocol.canonicalMessage(ts: ts, nonce: nonce, contentB64: contentB64)
     var err: Unmanaged<CFError>?
     let ok = SecKeyVerifySignature(pubKey, .ecdsaSignatureMessageX962SHA256, msg as CFData, sig as CFData, &err)
     if !ok { return errReply("bad_signature", "bad signature") }
@@ -468,7 +475,7 @@ func serve() {
 
     unlink(SOCK_PATH)
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-    if fd < 0 { log("socket() failed"); exit(1) }
+    if fd < 0 { log("socket() failed", level: .fault); exit(1) }
 
     var addr = sockaddr_un()
     addr.sun_family = sa_family_t(AF_UNIX)
@@ -483,9 +490,9 @@ func serve() {
     let bindRes = withUnsafePointer(to: &addr) {
         $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, size) }
     }
-    if bindRes != 0 { log("bind() failed errno=\(errno)"); exit(1) }
+    if bindRes != 0 { log("bind() failed errno=\(errno)", level: .fault); exit(1) }
     chmod(SOCK_PATH, 0o666)
-    if listen(fd, 8) != 0 { log("listen() failed"); exit(1) }
+    if listen(fd, 8) != 0 { log("listen() failed", level: .fault); exit(1) }
     log("listening on \(SOCK_PATH)")
 
     while true {
@@ -501,7 +508,7 @@ func serve() {
         guard peerAuthorized(peerUID, authUID) else { close(conn); continue }
         // Verify the peer is actually our signed app before reading anything from it.
         guard peerCodeAuthorized(conn, peerUID: peerUID) else {
-            log("rejected peer (code signature) uid=\(peerUID)"); close(conn); continue
+            log("rejected peer (code signature) uid=\(peerUID)", level: .error); close(conn); continue
         }
         let (request, truncated) = readRequest(conn)
         let reply = truncated

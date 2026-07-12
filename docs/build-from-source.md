@@ -93,11 +93,11 @@ Pull the latest source and rebuild (⌘R). Your team selection persists.
 
 ## Running the tests
 
-The pure-logic Core sources have a standalone test suite that compiles directly
-with `swiftc`:
+The pure-logic Core sources are covered by the `HostsEditorTests` Swift Testing
+bundle. Run it with **⌘U** in Xcode, or:
 
 ```bash
-./scripts/test.sh
+xcodebuild test -project etc-hosts.xcodeproj -scheme etc-hosts
 ```
 
 ## Troubleshooting

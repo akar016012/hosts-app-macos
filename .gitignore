@@ -13,9 +13,6 @@ build/
 # Swift Package Manager
 .build/
 
-# Test-runner build directory (test.sh).
-.build-test/
-
 # Local code-signing identities (personal — never commit).
 .signid
 .devid

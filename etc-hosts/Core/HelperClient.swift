@@ -140,7 +140,7 @@ enum HelperClient {
         let ts = Int(Date().timeIntervalSince1970)
         let nonce = UUID().uuidString
         let contentB64 = Data(content.utf8).base64EncodedString()
-        let msg = Data("hostshelper-v1\n\(ts)\n\(nonce)\n\(contentB64)".utf8)
+        let msg = HelperProtocol.canonicalMessage(ts: ts, nonce: nonce, contentB64: contentB64)
         let sig = try SigningKey.sign(msg).base64EncodedString()
 
         let request: [String: Any] = ["cmd": "write", "protocol": Helper.protocolVersion,

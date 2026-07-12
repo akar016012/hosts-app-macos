@@ -157,7 +157,7 @@ The app intentionally keeps runtime state in standard macOS locations:
   custom theme data, and the default unlock method.
 - `~/Library/Application Support/HostsEditor/history.json` — in-app change
   history, capped at the most recent 50 snapshots.
-- `~/Library/Application Support/HostsEditor/pin.json` — salted, iterated PIN
+- `~/Library/Application Support/HostsEditor/pin.json` — salted PBKDF2 PIN
   digest for PIN unlock. The PIN itself is never stored.
 - `~/Library/Application Support/HostsEditor/session-signing.key` — owner-only
   private key used to sign write requests sent to the privileged helper.

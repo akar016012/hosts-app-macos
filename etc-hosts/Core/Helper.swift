@@ -3,23 +3,18 @@
 
 import Foundation
 
-// MARK: - Helper identifiers (must match HostsHelper / build.sh)
+// MARK: - Helper identifiers
 
+// Protocol-level constants forward to Shared/HelperProtocol.swift (compiled into
+// both the app and the daemon); only the app-private signing-key locations live
+// here.
 enum Helper {
-    static let label = "com.etchosts.hostshelper"
-    // Wire-protocol version the app speaks. The daemon (HostsHelper.swift) is a
-    // SEPARATE compilation unit that does NOT import this file, so it carries a
-    // mirrored `HELPER_PROTOCOL_VERSION` constant — the two MUST stay in sync.
-    static let protocolVersion = 1
-    // The launchd plist bundled at Contents/Library/LaunchDaemons/<plistName>; its
-    // file-name stem must equal `label`. SMAppService manages the install location,
-    // so there are no longer fixed /Library/{LaunchDaemons,PrivilegedHelperTools} paths.
-    static let plistName = "com.etchosts.hostshelper.plist"
-    static let pubkeyPath = "/Library/Application Support/HostsHelper/pubkey"
-    // The uid authorized to drive the daemon, written at install time. The daemon
-    // rejects connections from any other (non-root) user.
-    static let uidPath = "/Library/Application Support/HostsHelper/uid"
-    static let socketPath = "/var/run/com.etchosts.hostshelper.sock"
+    static let label = HelperProtocol.label
+    static let protocolVersion = HelperProtocol.version
+    static let plistName = HelperProtocol.plistName
+    static let pubkeyPath = HelperProtocol.pubkeyPath
+    static let uidPath = HelperProtocol.uidPath
+    static let socketPath = HelperProtocol.socketPath
     static let keyTag = "com.etchosts.hostseditor.session-signing.v3".data(using: .utf8)!
     static let legacyKeyTags = [
         "com.etchosts.hostseditor.signing",
