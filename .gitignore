@@ -3,28 +3,30 @@
 *.swp
 *~
 
-# Build intermediates — build.sh compiles these on its way to producing
-# native/HostsEditor.app. They only linger if a build is interrupted.
-/native/HostsEditor
-/native/com.aditya.hostshelper
-/native/AppIcon.iconset/
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+build/
 *.dSYM/
 
-# Generated app bundle — build.sh produces this; it is a build artifact and is
-# no longer tracked in git. Build it locally with `cd native && ./build.sh`.
-native/HostsEditor.app/
-
-# Test-runner build directory (native/test.sh).
-native/.build-test/
-
-# Local code-signing identity for build.sh (personal — never commit).
-native/.signid
-
-# Xcode / Swift Package Manager (if the project is ever opened in Xcode)
+# Swift Package Manager
 .build/
-DerivedData/
-*.xcuserstate
-xcuserdata/
+
+# Test-runner build directory (test.sh).
+.build-test/
+
+# Local code-signing identities (personal — never commit).
+.signid
+.devid
+
+# Release artifacts produced by release.sh.
+*.dmg
+*.zip
+# Generated Sparkle appcast feed (uploaded as a GitHub Release asset).
+appcast.xml
+# Sparkle tools downloaded + checksum-verified by release.sh fallback.
+.tools/
 
 # Node (legacy, kept from the previous web prototype)
 node_modules/
@@ -40,15 +42,4 @@ improvements.md
 .vscode/
 .idea/
 docs/FEATURES.md
-
-# Local Developer ID identity for release.sh (personal — never commit).
-native/.devid
-# Release artifacts produced by native/release.sh.
-native/*.dmg
-native/*.zip
-# Generated Sparkle appcast feed (uploaded as a GitHub Release asset).
-native/appcast.xml
-
-# Sparkle framework + tools, downloaded + checksum-verified by build.sh.
-native/Vendor/
 temp_docs/*

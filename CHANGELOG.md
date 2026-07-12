@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Redesigned onboarding flow.** Steps now slide in the direction of travel
+  while the card animates to each step's natural height instead of pinning
+  every step to one fixed-height frame. Non-welcome steps show a "Step X of Y"
+  counter, the progress dots are clickable to revisit any previously seen step
+  (with step titles as tooltips), and the keyboard works throughout — Return
+  continues (even from a focused field), Esc or ⌘← goes back. The welcome
+  feature cards highlight on hover, and cards, bullets, and summary rows
+  cascade in with a staggered entrance.
+- **The project is now a standard Xcode project.** Sources moved from `native/`
+  into `etc-hosts.xcodeproj` with two targets — the app (`etc-hosts/`) and the
+  privileged helper (`HostsHelper/`) — with Sparkle resolved via Swift Package
+  Manager instead of a checksum-pinned download, and the app icon in an asset
+  catalog. The `build.sh`/`release.sh` scripts are gone: build with Xcode (⌘B)
+  or `xcodebuild`; releases use Xcode's Archive → Organizer flow plus
+  `scripts/create-dmg.sh` and `scripts/generate-appcast.sh` (see the new
+  `docs/release.md`). Tests still run with `bash scripts/test.sh`. The
+  migration itself changes no user-facing behavior.
 - **Raw preview, History, and Flush DNS now work while the session is locked.**
   Raw and History are read-only views of a world-readable file (revert and
   clear-history inside the History sheet still require an unlocked session),

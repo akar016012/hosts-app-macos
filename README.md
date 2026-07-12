@@ -65,32 +65,35 @@ takes about five minutes.
 
 ## Build
 
+Open `etc-hosts.xcodeproj` in Xcode and press **⌘R**, or from the command line:
+
 ```bash
-cd native
-./build.sh
+xcodebuild -project etc-hosts.xcodeproj -scheme etc-hosts -configuration Debug build
 ```
 
-The build creates `native/HostsEditor.app`.
+The build produces `HostsEditor.app` (in Xcode's DerivedData products directory)
+with the privileged helper and its launchd plist embedded, and Sparkle pulled in
+via Swift Package Manager.
 
 The bundle is signed with a real signing identity (not ad-hoc) because
 `SMAppService` refuses to register an ad-hoc–signed daemon. A **free Apple
 Development certificate** (created from a free Apple ID "Personal Team" in Xcode)
-is enough to build and run locally; a paid **Developer ID** + notarization is only
-needed to distribute the app to other Macs — that's how the published `.dmg` above
-is produced, via [`native/release.sh`](native/release.sh). Override the identity
-with:
+is enough to build and run locally — select **your own team** under **Signing &
+Capabilities** for both targets, or pass it on the command line without editing
+the project:
 
 ```bash
-SIGN_IDENTITY="Apple Development: you@example.com (TEAMID)" ./build.sh
-```
+xcodebuild -project etc-hosts.xcodeproj -scheme etc-hosts -configuration Debug \
+  DEVELOPMENT_TEAM=YOURTEAMID build
+``` A paid **Developer ID** + notarization is only
+needed to distribute the app to other Macs — that's how the published `.dmg` above
+is produced, via Xcode's Archive → Organizer flow (see
+[docs/release.md](docs/release.md)).
 
 ## Run
 
-Open the app from Finder, or run:
-
-```bash
-open native/HostsEditor.app
-```
+Run the app from Xcode (**⌘R**), or open the built `HostsEditor.app` from the
+products directory.
 
 On first launch, the app shows a welcome tour where you can set a local profile,
 pick a theme, and choose how edits unlock. Returning users unlock the edit
@@ -110,23 +113,24 @@ profile or lock menu so the helper receives the fresh public key.
 
 ## How it works
 
-- `native/HostsEditor.swift` — the SwiftUI app entry point.
-- `native/Core/` — app state, parsing, host grouping, session signing, local
+- `etc-hosts/HostsEditor.swift` — the SwiftUI app entry point.
+- `etc-hosts/Core/` — app state, parsing, host grouping, session signing, local
   history, and privileged-helper communication.
-- `native/UI/` — SwiftUI screens, sheets, row components, themes, and button
+- `etc-hosts/UI/` — SwiftUI screens, sheets, row components, themes, and button
   styles.
-- `native/HostsHelper.swift` — the privileged LaunchDaemon helper. It lives
-  inside the app bundle (`Contents/MacOS`) with its launchd plist at
-  `Contents/Library/LaunchDaemons`, is registered/unregistered via `SMAppService`
-  (see `native/Core/ServiceManager.swift`), and only writes `/etc/hosts` after
-  validating a request signed by the app's session key. The trusted public key is
-  recorded on first use via an `enroll` message over the helper socket. Before
-  reading any request the helper also verifies, via the peer's audit token, that
-  the connecting process is the app itself — code-signed by the same team as the
-  helper — so the signing key alone is not enough to drive a write.
-- `native/build.sh` — compiles all app sources and the helper, bundles them
-  (helper in `Contents/MacOS`, daemon plist in `Contents/Library/LaunchDaemons`),
-  generates the icon, and signs the helper and app bundle with a real signing
+- `HostsHelper/main.swift` — the privileged LaunchDaemon helper (its own Xcode
+  target). It lives inside the app bundle (`Contents/MacOS`) with its launchd
+  plist at `Contents/Library/LaunchDaemons`, is registered/unregistered via
+  `SMAppService` (see `etc-hosts/Core/ServiceManager.swift`), and only writes
+  `/etc/hosts` after validating a request signed by the app's session key. The
+  trusted public key is recorded on first use via an `enroll` message over the
+  helper socket. Before reading any request the helper also verifies, via the
+  peer's audit token, that the connecting process is the app itself —
+  code-signed by the same team as the helper — so the signing key alone is not
+  enough to drive a write.
+- `etc-hosts.xcodeproj` — the Xcode project: the `etc-hosts` app target embeds
+  the `HostsHelper` target's binary in `Contents/MacOS` and the daemon plist in
+  `Contents/Library/LaunchDaemons`, and signs everything with a real signing
   identity (hardened runtime).
 
 Disabled entries are stored as commented-out lines.

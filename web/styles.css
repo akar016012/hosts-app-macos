@@ -209,13 +209,16 @@ header.hero { padding: 110px 0 80px; text-align: center; position: relative; z-i
 .step .num { width: 36px; height: 36px; border-radius: 10px; background: var(--accent); color: var(--onAccent); font-weight: 800; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 16px; }
 .step h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
 .step p { color: var(--text2); font-size: 14.5px; }
+/* The code block is always dark, so its text colors are fixed rather than
+   theme variables — light themes would otherwise render dark-on-dark. */
 .code {
-  margin-top: 36px; background: #060912; border: 1px solid var(--border); border-radius: 12px;
-  padding: 20px 22px; font-family: var(--mono); font-size: 14px; color: var(--text2); overflow-x: auto;
+  margin-top: 36px; background: #060912; border: 1px solid #1e2840; border-radius: 12px;
+  padding: 20px 22px; font-family: var(--mono); font-size: 14px; color: #aab4c8;
+  white-space: pre; overflow-x: auto;
 }
-.code .c { color: var(--textDim); }
-.code .p { color: var(--green); }
-.code .s { color: var(--amber); }
+.code .c { color: #6b7689; }
+.code .p { color: #34d399; }
+.code .s { color: #f5b54a; }
 .code-more { margin-top: 16px; font-size: 14.5px; }
 .code-more a { color: var(--accent2); font-weight: 600; transition: opacity 0.15s; }
 .code-more a:hover { opacity: 0.8; }
