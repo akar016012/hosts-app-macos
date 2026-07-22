@@ -85,42 +85,70 @@ enum HelperClient {
         }
         try ensureEnabled()
 
-        // Wait for the freshly-launched daemon to bind its socket.
-        if !waitForSocket() {
-            // The system reports the daemon `.enabled` but its socket never came up.
-            // That's the signature of a stale Background Task Management record after
-            // an in-place app update (launchd rejects the new binary's code hash with
-            // EX_CONFIG and never spawns it), which registerIfNeeded() won't fix
-            // because it short-circuits on the `.enabled` status. Re-register once to
-            // record the current hash, re-check approval, then wait again.
+        // Wait for the daemon to bind its socket. The budget is generous because a
+        // RunAtLoad daemon can legitimately take a while right after boot (launchd
+        // contention, first-launch signature validation) — and misreading "slow" as
+        // "broken" here used to trigger the destructive repair below on every unlock.
+        if !waitForSocket(budget: 15) {
+            // Status is `.enabled` (ensureEnabled passed) but the socket never came
+            // up. Two very different causes look identical at this point:
+            //   - launchd refuses to spawn the binary: EX_CONFIG from a stale
+            //     Background Task Management record after an in-place app update.
+            //     Re-registering to record the current code hash fixes this.
+            //   - The daemon is slow or failing for any other reason. Re-registering
+            //     fixes nothing and RESETS the user's Login Items approval, so doing
+            //     it on a bare timeout loops forever: approve → unlock → unregister →
+            //     "approval required" again.
+            // So the repair only runs with positive launchd evidence of the first
+            // case, and at most once per cooldown window even across relaunches.
+            guard ServiceManager.launchdReportsSpawnFailure() else {
+                throw HostsError.failed("The Hosts helper didn't respond in time. Wait a moment and unlock again. If this keeps happening, run Help → Verify Helper.")
+            }
+            guard ServiceManager.canAttemptAutoRepair else {
+                throw HostsError.failed("The Hosts helper can't start, and a recent automatic repair didn't fix it. If another copy of Hosts is installed anywhere (even an old build), delete it, then restart your Mac and try again.")
+            }
+            ServiceManager.recordAutoRepair()
             do {
                 try ServiceManager.reregister()
             } catch {
-                throw HostsError.failed("Couldn't restart the Hosts helper. Remove “Hosts” from System Settings → Login Items, reopen Hosts, then unlock again.")
+                throw HostsError.failed("Couldn't repair the Hosts helper. Quit and reopen Hosts, then unlock again.")
             }
             try ensureEnabled()
-            guard waitForSocket() else {
-                throw HostsError.failed("The Hosts helper didn't start. Remove “Hosts” from System Settings → Login Items, reopen Hosts, then unlock again.")
+            guard waitForSocket(budget: 10) else {
+                throw HostsError.failed("The Hosts helper still didn't start after a repair. If another copy of Hosts is installed anywhere (even an old build), delete it, then restart your Mac and try again.")
             }
         }
         if resetSigningKey || needsEnroll() { try enroll(resetSigningKey: resetSigningKey) }
     }
 
-    // Throw an actionable error unless the service is `.enabled`. Deep-links to Login
-    // Items when approval is still pending (e.g. right after a first/re-registration).
+    // Throw an actionable error unless the service is `.enabled`. Each status gets
+    // its own remedy — routing them all to "enable in Login Items" hid genuinely
+    // different failures (unpackaged helper, failed registration) behind advice
+    // that couldn't fix them.
     private static func ensureEnabled() throws {
-        if ServiceManager.status == .requiresApproval {
+        switch ServiceManager.status {
+        case .enabled:
+            return
+        case .requiresApproval:
             ServiceManager.openLoginItems()
             throw HostsError.failed("Enable “Hosts” in System Settings → Login Items, then unlock again.")
-        }
-        guard ServiceManager.status == .enabled else {
-            throw HostsError.failed("The Hosts helper isn't enabled yet. Enable “Hosts” in System Settings → Login Items, then unlock again.")
+        case .notFound:
+            throw HostsError.failed("macOS couldn't find the Hosts helper inside the app. Keep a single copy of Hosts in the Applications folder, reopen it, then unlock again.")
+        case .notRegistered:
+            throw HostsError.failed("The Hosts helper isn't registered yet. Quit and reopen Hosts, then unlock again.")
+        @unknown default:
+            throw HostsError.failed("The Hosts helper is in an unexpected state (\(ServiceManager.statusDescription())). Quit and reopen Hosts, then unlock again.")
         }
     }
 
-    // Poll for the daemon's socket for ~5s. Returns true as soon as it answers.
-    private static func waitForSocket() -> Bool {
-        for _ in 0..<25 { if isResponding() { return true }; usleep(200_000) }
+    // Poll for the daemon's socket for up to `budget` seconds. Returns true as
+    // soon as it answers.
+    private static func waitForSocket(budget: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(budget)
+        while Date() < deadline {
+            if isResponding() { return true }
+            usleep(250_000)
+        }
         return isResponding()
     }
 
