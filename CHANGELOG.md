@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-07-23
+
+### Fixed
+
+- **Login Items approval no longer resets in a loop after a reboot.** The
+  unlock path treated any 5-second helper-socket timeout as a stale Background
+  Task Management record and automatically re-registered the daemon — which
+  resets the user's Login Items approval. After a reboot, when the daemon is
+  legitimately slow to come up, every unlock attempt tore the approval back
+  down, so re-approving in System Settings never took. The socket wait budget
+  is now 15 seconds, and the automatic repair only runs when launchd shows
+  positive evidence it refused to spawn the daemon (spawn failed / `EX_CONFIG`)
+  — rate-limited to once per 30 minutes, persisted across relaunches.
+- **Unlock errors now name the actual problem.** Each helper state
+  (approval pending, helper not found, not registered) gets its own actionable
+  message instead of routing everything to "enable Hosts in Login Items", and
+  a failed repair now points at the real likely cause — a second installed
+  copy of the app — instead of repeating advice that can't help.
+- The helper version shown in Verify Helper is now read from the app bundle
+  instead of a hardcoded "1.0", so diagnostics match the running release.
+
+### Added
+
+- **Verify Helper shows automatic-repair history.** A new row reports when an
+  automatic helper repair (re-registration) last ran — warning if within the
+  last 24 hours — since repairs reset the Login Items approval and explain an
+  unexpected re-approval prompt.
+
+### Security
+
+- **The helper's peer code-signature check now fails closed.** When the daemon
+  cannot resolve its own Team Identifier (unsigned/ad-hoc builds), it now
+  rejects socket peers outright instead of silently skipping the check —
+  previously the only remaining gates were the uid check and a signature whose
+  private key is a plain user-readable file.
+
+### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- Aditya Kar ([@akar016012](https://github.com/akar016012)) — #40
+
 ## [1.3.0] - 2026-07-12
 
 ### Changed
@@ -317,7 +359,8 @@ SwiftUI app for viewing and editing `/etc/hosts`.
   control-character rejection, replay protection (timestamps + persisted nonce
   set), and a defense-in-depth peer check in the helper.
 
-[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/akar016012/hosts-app-macos/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.0.5...v1.1.0
