@@ -33,9 +33,10 @@ import Darwin
 // mirrored `Helper.protocolVersion` — the two MUST stay in sync; bump both
 // together whenever the wire format changes.
 let HELPER_PROTOCOL_VERSION = 1
-// Human-readable helper build/version string. Keep matching the app bundle's
-// CFBundleShortVersionString.
-let HELPER_VERSION = "1.0"
+// Human-readable helper build/version string. The daemon binary lives inside the
+// app bundle (Contents/MacOS), so Bundle.main resolves the app's Info.plist —
+// reading the version from there means it can never drift from the app again.
+let HELPER_VERSION = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "unknown"
 
 // Security-critical paths are fixed constants — never taken from the environment,
 // which the daemon's launching context could otherwise influence to redirect the
@@ -122,8 +123,9 @@ func peerAuthorized(_ peerUID: uid_t, _ authUID: uid_t?) -> Bool {
 // Identifier rather than a hardcoded team — so it holds for any contributor's
 // signing certificate as long as the app and helper are signed together (build.sh
 // guarantees that). If our own team can't be determined (e.g. an unsigned/ad-hoc
-// dev build, which SMAppService won't register anyway) there is nothing to pin
-// against, so we fall back to the uid + signature gates rather than brick the app.
+// build) the check FAILS CLOSED: with no team to pin against, the only remaining
+// gates would be the uid check and a signature whose private key is a plain 0600
+// file any same-user process can read — not enough to guard root writes.
 let CLIENT_BUNDLE_ID = "com.etchosts.hostseditor"
 
 // getsockopt level/name for a Unix-socket peer's audit token, from <sys/un.h>.
@@ -168,8 +170,8 @@ let ourTeamID: String? = {
 func peerCodeAuthorized(_ fd: Int32, peerUID: uid_t) -> Bool {
     if peerUID == 0 { return true }   // root is already fully privileged; nothing to pin
     guard let team = ourTeamID else {
-        log("own team id unavailable (ad-hoc build?); skipping peer code check")
-        return true
+        log("own team id unavailable (ad-hoc build?); rejecting peer — sign both targets with a development team")
+        return false
     }
     guard let token = peerAuditToken(fd), let code = peerSecCode(from: token) else {
         log("could not obtain peer code; rejecting"); return false

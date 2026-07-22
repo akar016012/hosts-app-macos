@@ -63,6 +63,49 @@ enum ServiceManager {
         if let lastError { throw lastError }
     }
 
+    // True only when launchd itself reports it refused to spawn the daemon —
+    // "spawn failed" with EX_CONFIG (78), the signature of a Background Task
+    // Management record pinning a stale code hash after an in-place app update.
+    // A daemon that is merely slow to start (e.g. boot-time contention) does NOT
+    // show this state, so this is the gate that keeps the automatic repair from
+    // firing on a bare timeout. `launchctl print system/...` is readable without
+    // privileges; any failure to run/parse it counts as "no evidence".
+    static func launchdReportsSpawnFailure() -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        p.arguments = ["print", "system/\(Helper.label)"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = Pipe()
+        do { try p.run() } catch { return false }
+        p.waitUntilExit()
+        let text = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return text.contains("spawn failed") || text.contains("last exit code = 78")
+    }
+
+    // MARK: Automatic-repair bookkeeping
+
+    // Re-registration resets the user's Login Items approval, so automatic repairs
+    // are rate-limited and recorded: without this, a repair that doesn't fix the
+    // underlying problem re-runs on every unlock, tearing down the approval the
+    // user just granted — an unrecoverable loop. Persisted so it holds across
+    // relaunches, and surfaced in Diagnostics so the loop is visible if it happens.
+    private static let lastAutoRepairKey = "helperLastAutoRepair"
+
+    static var lastAutoRepairDate: Date? {
+        let t = UserDefaults.standard.double(forKey: lastAutoRepairKey)
+        return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    }
+
+    static func recordAutoRepair() {
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastAutoRepairKey)
+    }
+
+    static var canAttemptAutoRepair: Bool {
+        guard let last = lastAutoRepairDate else { return true }
+        return Date().timeIntervalSince(last) > 30 * 60
+    }
+
     // Open System Settings → Login Items so the user can approve a pending daemon.
     static func openLoginItems() {
         SMAppService.openSystemSettingsLoginItems()

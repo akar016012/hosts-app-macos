@@ -175,6 +175,22 @@ struct DiagnosticsView: View {
             out.append(CheckRow(title: "Last accepted write", detail: detail, status: .info))
         }
 
+        // 6. Automatic repair history. A repair re-registers the daemon, which
+        // resets the Login Items approval — so a recent one explains an unexpected
+        // re-approval prompt and is worth flagging here.
+        if let last = ServiceManager.lastAutoRepairDate {
+            let recent = Date().timeIntervalSince(last) < 24 * 3600
+            out.append(CheckRow(
+                title: "Automatic helper repair",
+                detail: "A repair (helper re-registration) last ran \(Self.dateFormatter.string(from: last)). Repairs reset the Login Items approval, which can prompt you to re-enable the helper.",
+                status: recent ? .warn : .info))
+        } else {
+            out.append(CheckRow(
+                title: "Automatic helper repair",
+                detail: "No automatic repairs have been needed.",
+                status: .pass))
+        }
+
         return out
     }
 
