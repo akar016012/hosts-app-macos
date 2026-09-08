@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-09-07
+
 ### Fixed
 
 - **PIN and macOS-password unlock now work on Macs without Touch ID.** On a
@@ -370,7 +372,8 @@ SwiftUI app for viewing and editing `/etc/hosts`.
   control-character rejection, replay protection (timestamps + persisted nonce
   set), and a defense-in-depth peer check in the helper.
 
-[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/akar016012/hosts-app-macos/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/akar016012/hosts-app-macos/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/akar016012/hosts-app-macos/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/akar016012/hosts-app-macos/compare/v1.1.0...v1.2.0
