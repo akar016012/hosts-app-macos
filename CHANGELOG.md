@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Changing your PIN no longer carries over the old PIN's lockout.** After
+  too many wrong PIN attempts, unlocking with Touch ID or the macOS password
+  and then choosing a new PIN left the old lockout timer in place, so the new
+  PIN was rejected with "Too many attempts" until it expired. Saving a new PIN
+  now resets the failed-attempt count and lockout, and the new PIN works
+  immediately.
+
 ## [1.3.2] - 2026-09-07
 
 ### Fixed

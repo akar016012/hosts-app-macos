@@ -316,6 +316,28 @@ do {
     } else { t.expect(false, "verify: correct PIN during lockout returns .lockedOut") }
 }
 
+// Changing a PIN after an alternate-method unlock must clear the old PIN's
+// lockout and failure count without requiring the forgot-PIN clear() path.
+PinStore.clear()
+do {
+    try! PinStore.set("4242")
+    for _ in 0..<PinStore.maxAttempts { _ = PinStore.verify("0000") }
+    if case .lockedOut = PinStore.verify("4242") {
+        t.expect(true, "change PIN: precondition — old PIN is locked out")
+    } else { t.expect(false, "change PIN: precondition — old PIN is locked out") }
+
+    try! PinStore.set("7777")
+    // Check a wrong attempt BEFORE a successful verification (which itself
+    // clears failures), so this specifically proves set() reset both fields.
+    if case .wrong(let remaining) = PinStore.verify("4242") {
+        t.expectEqual(remaining, PinStore.maxAttempts - 1,
+                      "change PIN: old PIN rejected with a fresh attempt budget")
+    } else { t.expect(false, "change PIN: old PIN rejected without inherited lockout") }
+    if case .ok = PinStore.verify("7777") {
+        t.expect(true, "change PIN: new PIN works immediately after old lockout")
+    } else { t.expect(false, "change PIN: new PIN works immediately after old lockout") }
+}
+
 // clear resets
 PinStore.clear()
 t.expect(!PinStore.isSet, "PinStore: isSet false after clear")
