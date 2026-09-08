@@ -28,9 +28,13 @@ struct UnlockChooserSheet: View {
                     if makeDefault { store.defaultUnlock = .touchID }
                     dismiss(); onTouchID()
                 }
+                // Without a PIN, this card leads to setup — which an established
+                // install only allows once unlocked another way.
+                let pinSetupBlocked = !store.pinSet && !store.canManagePIN
                 optionCard(icon: "number.square.fill", title: "PIN",
-                           subtitle: store.pinSet ? "Enter your PIN" : "Set up a PIN",
-                           enabled: true) {
+                           subtitle: store.pinSet ? "Enter your PIN"
+                               : (pinSetupBlocked ? "Unlock another way to set one up" : "Set up a PIN"),
+                           enabled: !pinSetupBlocked) {
                     if makeDefault { store.defaultUnlock = .pin }
                     dismiss(); onPIN()
                 }
@@ -283,6 +287,9 @@ struct PinSetupSheet: View {
         }
         .padding(24).frame(width: 420).background(Theme.surface)
         .onAppear { pinFocused = true }
+        // A forgot-PIN reset opens a short window in which this sheet may save
+        // without an unlocked session; closing the sheet ends it either way.
+        .onDisappear { store.discardPINResetGrant() }
     }
 
     private func save() {

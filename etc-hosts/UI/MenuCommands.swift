@@ -131,8 +131,8 @@ struct SettingsView: View {
                     Button(store.pinSet ? "Change PIN…" : "Set PIN…") {
                         postMenuCommand(.hpManagePIN)
                     }
-                    .disabled(store.pinSet && !store.sessionUnlocked)
-                    .help(store.pinSet && !store.sessionUnlocked ? "Unlock Hosts to change your PIN." : "")
+                    .disabled(!store.canManagePIN)
+                    .help(store.pinSetupDenialReason ?? "")
                 }
                 LabeledContent("Software Update") {
                     Button("Check Now…") { updater.checkForUpdates() }

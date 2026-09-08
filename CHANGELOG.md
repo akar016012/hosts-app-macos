@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now resets the failed-attempt count and lockout, and the new PIN works
   immediately.
 
+### Security
+
+- **A locked Hosts no longer lets anyone add a first PIN.** On an install that
+  used Touch ID or the macOS password without ever creating a PIN, Settings and
+  the unlock chooser offered "Set PIN…" while locked, so a person at the
+  unlocked Mac could pick a PIN and unlock Hosts with it without ever proving
+  they knew the owner's unlock method. Adding a first PIN now requires an
+  unlocked session or a Touch ID/password-confirmed forgot-PIN reset; only
+  genuine first-run onboarding can still create one without either.
+
 ## [1.3.2] - 2026-09-07
 
 ### Fixed

@@ -366,6 +366,42 @@ PinStore.clear()
 PinStore.clear()
 t.expect(!PinStore.isSet, "clear: no-op when nothing is set")
 
+// MARK: - 6b. PinStore.setupDenialReason (B01: first PIN on a locked, established install)
+
+t.group("PinStore.setupDenialReason")
+
+func setupCtx(pinSet: Bool = false, unlocked: Bool = false, onboarded: Bool = true,
+              keyExists: Bool = true, resetAuthorized: Bool = false) -> PinStore.SetupContext {
+    PinStore.SetupContext(pinSet: pinSet, sessionUnlocked: unlocked, onboardingCompleted: onboarded,
+                          sessionKeyExists: keyExists, resetAuthorized: resetAuthorized)
+}
+
+// The B01 hole: Touch ID / password install, no PIN, locked. Anyone at the Mac
+// could add a PIN and unlock with it. Must be refused.
+t.expect(PinStore.setupDenialReason(setupCtx()) != nil,
+         "refuses a first PIN on a locked, enrolled install (B01)")
+t.expect(PinStore.setupDenialReason(setupCtx(keyExists: false)) != nil,
+         "refuses a first PIN when onboarding finished, even before any unlock")
+t.expect(PinStore.setupDenialReason(setupCtx(onboarded: false)) != nil,
+         "refuses a first PIN on a tour replay when a session key exists")
+
+// The legitimate first-PIN routes.
+t.expect(PinStore.setupDenialReason(setupCtx(unlocked: true)) == nil,
+         "allows a first PIN in an unlocked session")
+t.expect(PinStore.setupDenialReason(setupCtx(onboarded: false, keyExists: false)) == nil,
+         "allows a first PIN during genuine first-run onboarding")
+t.expect(PinStore.setupDenialReason(setupCtx(resetAuthorized: true)) == nil,
+         "allows a replacement PIN right after a macOS-authenticated forgot-PIN reset")
+
+// Existing-PIN changes keep their unlocked-session rule; the reset grant and
+// first-run state never loosen it.
+t.expect(PinStore.setupDenialReason(setupCtx(pinSet: true, unlocked: true)) == nil,
+         "allows changing an existing PIN in an unlocked session")
+t.expectEqual(PinStore.setupDenialReason(setupCtx(pinSet: true)) ?? "", "Unlock to change your PIN.",
+              "refuses changing an existing PIN while locked")
+t.expect(PinStore.setupDenialReason(setupCtx(pinSet: true, onboarded: false, keyExists: false, resetAuthorized: true)) != nil,
+         "refuses changing an existing PIN while locked even with first-run + reset flags")
+
 // MARK: - 7. AutoLockPreferences
 
 t.group("AutoLockPreferences")

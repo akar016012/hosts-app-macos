@@ -318,6 +318,16 @@ struct OnboardingView: View {
                         .font(.system(size: 11.5)).foregroundColor(Theme.textDim)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            } else if let reason = store.pinSetupDenialReason {
+                // Tour replay on an established install while locked: the store
+                // refuses a first PIN here (it would let anyone at the Mac add
+                // one), so explain instead of offering fields.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("PIN").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundColor(Theme.textDim)
+                    Text(reason)
+                        .font(.system(size: 11.5)).foregroundColor(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("SET A PIN (OPTIONAL)").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundColor(Theme.textDim)
