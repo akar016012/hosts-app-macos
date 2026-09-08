@@ -17,8 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a Mac mini, Mac Studio, or any Mac without a Touch ID sensor, entering the
   correct login password (or PIN) showed "Touch ID isn't available right now"
   and left the entries locked. Key creation no longer checks for Touch ID —
-  every path that reaches it has already authenticated the user.
-  ([#41](https://github.com/akar016012/hosts-app-macos/issues/41))
+  every path that reaches it has already authenticated the user through
+  whichever unlock method they chose.
+
+### Contributors
+
+Thanks to everyone who contributed to this release:
+
+- Aditya Kar ([@akar016012](https://github.com/akar016012)) — #43, #44
+- [@dominikfiala](https://github.com/dominikfiala) — reported #41
 
 ## [1.3.1] - 2026-07-23
 
