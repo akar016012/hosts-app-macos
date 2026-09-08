@@ -59,6 +59,10 @@ enum PinStore {
                                                 attributes: [.posixPermissions: 0o700])
         try data.write(to: URL(fileURLWithPath: path), options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        // Callers authenticate existing-PIN changes. Once the new PIN is saved,
+        // it must not inherit failures or a lockout from the previous PIN.
+        // Propagate reset failures so the caller cannot report a successful save.
+        try saveAttempts(Attempts(failed: 0, lockedUntil: nil))
     }
 
     static func verify(_ pin: String) -> VerifyResult {
@@ -82,7 +86,7 @@ enum PinStore {
         for (a, b) in zip(candidate, record.hash) { diff |= a ^ b }
 
         if diff == 0 {
-            saveAttempts(Attempts(failed: 0, lockedUntil: nil))
+            try? saveAttempts(Attempts(failed: 0, lockedUntil: nil))
             return .ok
         }
 
@@ -90,10 +94,10 @@ enum PinStore {
         if attempts.failed >= maxAttempts {
             let backoff = lockoutSeconds(for: attempts.failed)
             attempts.lockedUntil = Date().addingTimeInterval(TimeInterval(backoff))
-            saveAttempts(attempts)
+            try? saveAttempts(attempts)
             return .lockedOut(seconds: backoff)
         }
-        saveAttempts(attempts)
+        try? saveAttempts(attempts)
         return .wrong(remaining: maxAttempts - attempts.failed)
     }
 
@@ -111,13 +115,13 @@ enum PinStore {
         return a
     }
 
-    private static func saveAttempts(_ a: Attempts) {
-        guard let data = try? JSONEncoder().encode(a) else { return }
+    private static func saveAttempts(_ a: Attempts) throws {
+        let data = try JSONEncoder().encode(a)
         let dir = (attemptsPath as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true,
-                                                 attributes: [.posixPermissions: 0o700])
-        try? data.write(to: URL(fileURLWithPath: attemptsPath), options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: attemptsPath)
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        try data.write(to: URL(fileURLWithPath: attemptsPath), options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: attemptsPath)
     }
 
     static func clear() {

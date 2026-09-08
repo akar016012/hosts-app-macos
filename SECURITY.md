@@ -80,6 +80,10 @@ Editing is gated behind a per-session unlock, by either:
   constant-time compare, and wrong attempts trigger a persisted lockout with
   escalating backoff (starting at 30s, doubling, capped at 1 hour).
 
+Changing an existing PIN requires an unlocked session. A successful PIN change
+resets the failed-attempt count and lockout deadline, including when the session
+was unlocked with Touch ID or the macOS password during a PIN lockout.
+
 Important: **Touch ID and the PIN are app-level gates** on whether the session is
 unlocked. They are a usability and local-presence control, not the cryptographic
 authorization. The real authorization for a privileged write is possession of the
