@@ -29,6 +29,21 @@ keeps state, and how to remove or repair it. For the security rationale see
 - Because the helper lives in the bundle, **moving or deleting the app** effectively
   unregisters the daemon.
 
+## External edits and protocol compatibility
+
+Write protocol v2 signs the expected SHA-256 hash of the last confirmed file
+along with the new content. The helper compares the live bytes before backup
+and immediately before rename, rejecting conflicts without applying the edit.
+The app reloads the external version into the editor and History; the user can
+review and retry. Activation also refreshes the file, and refreshes wait for any
+pending save to finish. No automatic retry overwrites a conflicting version.
+
+Both app and helper must support v2. An older helper rejects the new signature;
+an older client is rejected by the new helper. Quit and reopen after updating;
+if the old helper remains active, use the unregister/re-enroll repair below.
+The final comparison and rename are separate filesystem operations, so other
+privileged writers should still avoid modifying the file at exactly the same time.
+
 ## Where state lives
 
 **Helper state (root-owned, under `/Library/Application Support/HostsHelper/`):**

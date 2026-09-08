@@ -113,10 +113,12 @@ enum Filter: String, CaseIterable { case all = "All", active = "Active", disable
 
 enum HostsError: LocalizedError {
     case cancelled
+    case fileConflict
     case failed(String)
     var errorDescription: String? {
         switch self {
         case .cancelled: return "Cancelled."
+        case .fileConflict: return "/etc/hosts changed outside Hosts. Your change was not saved. Review the current file and try again."
         case .failed(let m): return m
         }
     }

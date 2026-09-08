@@ -56,7 +56,11 @@ bash scripts/test.sh
 
 The runner compiles the suite with plain `swiftc` into `.build-test/`
 (gitignored) and runs it in isolation. Add or update tests for any new logic in
-`Core/`.
+`Core/`. The same command also runs the real `HostsStore` and helper file writer
+against temporary hosts files, with delayed writes and stubbed authentication
+and helper service calls. These regression tests cover external conflicts,
+History/Undo baselines, activation refresh, and edits attempted during a save.
+They never write `/etc/hosts` or register the helper.
 
 ## Running the app
 

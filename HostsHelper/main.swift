@@ -9,13 +9,13 @@
 // aren't the authorized user (or root).
 //
 // Wire protocol (one JSON object + "\n" per connection):
-//   write  : {"cmd":"write","ts":<int>,"nonce":"<uuid>","content":"<base64>","sig":"<base64>"}
+//   write  : {"cmd":"write","ts":<int>,"nonce":"<uuid>","content":"<base64>","expectedHash":"<sha256>","protocol":2,"sig":"<base64>"}
 //   enroll : {"cmd":"enroll","pubkey":"<base64>"}
 //   reply  : {"ok":true} | {"ok":false,"error":"..."}
 // "cmd" is optional and defaults to "write" for backward compatibility.
 //
 // Signed bytes for a write (must match the app exactly):
-//   "hostshelper-v1\n" + ts + "\n" + nonce + "\n" + contentBase64
+//   "hostshelper-v2\n" + ts + "\n" + nonce + "\n" + expectedHash + "\n" + contentBase64
 //
 // Trust on first use: with SMAppService there is no longer a root install script
 // to plant the trusted public key. Instead the daemon accepts one "enroll" from an
@@ -32,7 +32,7 @@ import Darwin
 // Protocol version this daemon speaks. The app (Core/Helper.swift) carries a
 // mirrored `Helper.protocolVersion` — the two MUST stay in sync; bump both
 // together whenever the wire format changes.
-let HELPER_PROTOCOL_VERSION = 1
+let HELPER_PROTOCOL_VERSION = 2
 // Human-readable helper build/version string. The daemon binary lives inside the
 // app bundle (Contents/MacOS), so Bundle.main resolves the app's Info.plist —
 // reading the version from there means it can never drift from the app again.
@@ -85,8 +85,8 @@ func loadPublicKey() -> SecKey? {
     return key
 }
 
-func canonicalMessage(ts: Int, nonce: String, contentB64: String) -> Data {
-    Data("hostshelper-v1\n\(ts)\n\(nonce)\n\(contentB64)".utf8)
+func canonicalMessage(ts: Int, nonce: String, expectedHash: String, contentB64: String) -> Data {
+    Data("hostshelper-v2\n\(ts)\n\(nonce)\n\(expectedHash)\n\(contentB64)".utf8)
 }
 
 // The uid permitted to drive the daemon, recorded at install time. nil if the
@@ -237,8 +237,6 @@ func persistEnrollment(pubData: Data, uid: uid_t) -> Bool {
     }
 }
 
-struct WriteError: LocalizedError { let message: String; var errorDescription: String? { message } }
-
 // Reject payloads that aren't a plausible hosts file: too large, or containing
 // control characters (NUL etc.) that have no business in /etc/hosts.
 func validateContent(_ content: String) -> String? {
@@ -249,57 +247,9 @@ func validateContent(_ content: String) -> String? {
     return nil
 }
 
-// Keep only the most recent N timestamped backups (filenames sort chronologically).
-func pruneBackups(keep: Int = 20) {
-    guard let files = try? FileManager.default.contentsOfDirectory(atPath: BACKUP_DIR) else { return }
-    let baks = files.filter { $0.hasPrefix("hosts-") && $0.hasSuffix(".bak") }.sorted()
-    guard baks.count > keep else { return }
-    for f in baks.prefix(baks.count - keep) {
-        try? FileManager.default.removeItem(atPath: "\(BACKUP_DIR)/\(f)")
-    }
-}
-
-func writeHosts(content: String) throws {
-    try? FileManager.default.createDirectory(atPath: BACKUP_DIR, withIntermediateDirectories: true,
-                                             attributes: [.posixPermissions: 0o700])
-    // Back up as raw bytes (not UTF-8 text) so a hand-edited or non-UTF-8 file is
-    // preserved verbatim — and fail closed: never overwrite an existing hosts file
-    // whose backup couldn't be taken.
-    if FileManager.default.fileExists(atPath: HOSTS_PATH) {
-        guard let current = try? Data(contentsOf: URL(fileURLWithPath: HOSTS_PATH)) else {
-            throw WriteError(message: "could not read existing hosts file for backup")
-        }
-        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        do {
-            try current.write(to: URL(fileURLWithPath: "\(BACKUP_DIR)/hosts-\(stamp).bak"), options: .atomic)
-        } catch {
-            throw WriteError(message: "could not create backup: \(error.localizedDescription)")
-        }
-        pruneBackups()
-    }
-
-    // Symlink-safe atomic replace: write a fresh temp file in the same directory
-    // with O_NOFOLLOW|O_EXCL (so an attacker-planted symlink can't redirect the
-    // write), then rename() over the target. rename replaces the name itself, so
-    // even if /etc/hosts were a symlink it's atomically swapped for a real file.
-    let tmpPath = HOSTS_PATH + ".hostsedit.tmp"
-    unlink(tmpPath)
-    let fd = open(tmpPath, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_EXCL, 0o644)
-    if fd < 0 { throw WriteError(message: "open temp failed (errno \(errno))") }
-    let bytes = Array(content.utf8)
-    let written = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, bytes.count) }
-    fchmod(fd, 0o644)
-    close(fd)
-    guard written == bytes.count else {
-        unlink(tmpPath)
-        throw WriteError(message: "short write")
-    }
-    if rename(tmpPath, HOSTS_PATH) != 0 {
-        let e = errno
-        unlink(tmpPath)
-        throw WriteError(message: "rename failed (errno \(e))")
-    }
-    chown(HOSTS_PATH, 0, 0)   // keep canonical root:wheel ownership
+func writeHosts(content: String, expectedHash: String) throws {
+    try writeHostsFile(content: content, expectedHash: expectedHash,
+                       path: HOSTS_PATH, backupDirectory: BACKUP_DIR)
 }
 
 // Record (or rotate) the trusted public key.
@@ -393,17 +343,18 @@ func handle(_ requestData: Data, peerUID: uid_t) -> String {
     // Read-only diagnostics — no signature required (exposes no secrets).
     if (obj["cmd"] as? String) == "status" { return handleStatus() }
 
-    // Reject a wire-protocol mismatch loudly rather than silently misparsing a
-    // future format. An absent field means a pre-versioned (v1) client, which is
-    // still v1-compatible, so only a present-and-different version is rejected.
-    if let p = obj["protocol"] as? Int, p != HELPER_PROTOCOL_VERSION {
-        return errReply("protocol_mismatch", "unsupported protocol version \(p)")
+    // Older clients have no signed baseline and must never perform a write.
+    guard obj["protocol"] as? Int == HELPER_PROTOCOL_VERSION else {
+        return errReply("protocol_mismatch", "write requires protocol v2")
     }
 
     // Writes require a trusted key — until enrolled there is nothing to verify against.
     guard let pubKey = trustedPubKey else { return errReply("not_enrolled", "not enrolled") }
     guard let ts = obj["ts"] as? Int,
           let nonce = obj["nonce"] as? String,
+          let expectedHash = obj["expectedHash"] as? String,
+          expectedHash.count == 64,
+          expectedHash.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
           let contentB64 = obj["content"] as? String,
           let sigB64 = obj["sig"] as? String,
           let sig = Data(base64Encoded: sigB64),
@@ -418,14 +369,15 @@ func handle(_ requestData: Data, peerUID: uid_t) -> String {
     if ts < lastAcceptedTs - 90 { return errReply("replayed_timestamp", "replayed timestamp") }
     if recentNonces.contains(nonce) { return errReply("replayed_nonce", "replayed nonce") }
 
-    let msg = canonicalMessage(ts: ts, nonce: nonce, contentB64: contentB64)
+    let msg = canonicalMessage(ts: ts, nonce: nonce, expectedHash: expectedHash, contentB64: contentB64)
     var err: Unmanaged<CFError>?
     let ok = SecKeyVerifySignature(pubKey, .ecdsaSignatureMessageX962SHA256, msg as CFData, sig as CFData, &err)
     if !ok { return errReply("bad_signature", "bad signature") }
 
     if let reason = validateContent(content) { return errReply("invalid_content", reason) }
 
-    do { try writeHosts(content: content) }
+    do { try writeHosts(content: content, expectedHash: expectedHash) }
+    catch HostsFileConflict.changed { return errReply("file_conflict", "hosts file changed") }
     catch { return errReply("write_failed", "write failed: \(error.localizedDescription)") }
 
     lastAcceptedTs = max(lastAcceptedTs, ts)

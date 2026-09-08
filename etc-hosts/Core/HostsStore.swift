@@ -76,10 +76,16 @@ final class HostsStore: ObservableObject {
     private var activityMonitor: Any?
 
     enum ToastKind { case ok, error, info }
-    let path = "/etc/hosts"
-    var editingReady: Bool { sessionUnlocked && helperReady }
+    let path: String
+    @Published private(set) var isWriting = false
+    @Published private var hasLoadedBaseline = false
+    private var refreshPending = false
+    var editingReady: Bool { sessionUnlocked && helperReady && hasLoadedBaseline && !isWriting }
 
-    init() { startInactivityTimer() }
+    init(path: String = "/etc/hosts") {
+        self.path = path
+        startInactivityTimer()
+    }
 
     func resetActivityTimer() { lastActivityDate = Date() }
 
@@ -133,21 +139,35 @@ final class HostsStore: ObservableObject {
     }
 
     func load() {
-        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
-            showToast("Couldn't read \(path). Reopen Hosts and try again.", .error); return
-        }
-        rawText = raw
-        lines = parseHosts(raw)
-        if history.isEmpty { history = HistoryStore.load() }
-        recordSnapshot(raw, label: "Current file")
+        refreshFromDisk()
         helperReady = HelperClient.isReady()
-        probeStatus()
+    }
+
+    // Activation refreshes are deferred while a write owns the baseline. Reparse
+    // only on a byte change so normal activation keeps row IDs and selection.
+    func refreshFromDisk() {
+        guard !isWriting else { refreshPending = true; return }
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let raw = String(data: data, encoding: .utf8) else {
+            hasLoadedBaseline = false
+            showToast("Couldn't read \(path). Reopen Hosts and try again.", .error)
+            return
+        }
+        let changed = Data(rawText.utf8) != data
+        let wasLoaded = hasLoadedBaseline
+        hasLoadedBaseline = true
+        if !wasLoaded || changed {
+            applyWrittenContent(raw)
+            if history.isEmpty { history = HistoryStore.load() }
+            recordSnapshot(raw, label: wasLoaded ? "External change" : "Current file")
+            if wasLoaded { showToast("Reloaded changes made outside Hosts. Review the current file before editing.", .info) }
+        }
     }
 
     // Prepend a snapshot (newest-first), collapsing no-op writes and capping the
     // log. Persisted immediately so history survives relaunches.
     private func recordSnapshot(_ content: String, label: String) {
-        guard content != history.first?.content else { return }
+        if let previous = history.first?.content, Data(content.utf8) == Data(previous.utf8) { return }
         var updated = history
         updated.insert(HostSnapshot(label: label, content: content), at: 0)
         if updated.count > HistoryStore.maxSnapshots {
@@ -390,37 +410,48 @@ final class HostsStore: ObservableObject {
         lines.firstIndex { if case .entry(let e) = $0 { return e.id == id } else { return false } }
     }
 
-    // Monotonic token identifying the most recent write. A failed write only rolls
-    // back the UI if it's still the latest one — so a stale failure can't clobber a
-    // newer optimistic edit that already succeeded or is in flight.
-    private var writeSeq = 0
-
+    // One pending transaction owns the last confirmed rawText baseline. This
+    // prevents a second edit or activation refresh from moving it while awaiting
+    // the helper. The helper checks the signed baseline against the live bytes.
     private func commit(_ mutate: () -> Void, successMessage: String) {
-        guard editingReady else {
-            showToast("Unlock to make changes.", .error)
-            return
-        }
-        let snapshot = lines
+        guard editingReady else { nudgeLocked(); return }
+        let previousLines = lines
         mutate()
-        let pendingContent = serializeHosts(lines)
-        writeSeq += 1
-        let gen = writeSeq
+        persist(serializeHosts(lines), label: successMessage, previousLines: previousLines,
+                reparseOnSuccess: false)
+    }
+
+    private func persist(_ content: String, label: String, previousLines: [HostLine],
+                         reparseOnSuccess: Bool, onSuccess: (() -> Void)? = nil) {
+        let expectedContent = rawText
+        isWriting = true
         Task {
+            defer {
+                isWriting = false
+                if refreshPending {
+                    refreshPending = false
+                    refreshFromDisk()
+                }
+            }
             do {
-                // Serialized + off-main so concurrent edits can't interleave writes.
-                try await HelperGateway.shared.write(pendingContent)
-                // Keep the optimistic in-memory lines (stable identities) and just
-                // resync the raw text. Re-parsing here would mint new UUIDs for
-                // every entry, making SwiftUI replace all rows — the visible "jump".
-                rawText = pendingContent
-                recordSnapshot(pendingContent, label: successMessage)
-                showToast(successMessage, .ok)
+                try await HelperGateway.shared.write(content, expectedContent: expectedContent)
+                if reparseOnSuccess { applyWrittenContent(content) }
+                else { rawText = content } // Keep optimistic row identities.
+                recordSnapshot(content, label: label)
+                showToast(label, .ok)
+                onSuccess?()
+            } catch HostsError.fileConflict {
+                lines = previousLines
+                // Reload before reporting the conflict; never retry stale content
+                // automatically. The external version becomes the History baseline.
+                isWriting = false
+                refreshPending = false
+                refreshFromDisk()
+                showToast(userMessage(HostsError.fileConflict), .error)
             } catch HostsError.cancelled {
-                if gen == writeSeq { lines = snapshot }
+                lines = previousLines
             } catch {
-                if gen == writeSeq { lines = snapshot }
-                // Re-derive readiness from the actual helper state: a transient
-                // hiccup keeps the session ready, a real loss demotes the UI.
+                lines = previousLines
                 helperReady = HelperClient.isReady()
                 showToast(userMessage(error), .error)
             }
@@ -434,32 +465,10 @@ final class HostsStore: ObservableObject {
     // resync to disk. `onSuccess` runs only after the write lands (e.g. to flush DNS
     // or stamp the applied scheme).
     func replaceAll(with content: String, label: String, onSuccess: (() -> Void)? = nil) {
-        guard editingReady else {
-            showToast("Unlock to make changes.", .error)
-            return
-        }
-        // The helper rejects \r as a control character, so CRLF content (e.g. a
-        // hosts file or scheme bundle authored on Windows) must be normalized here.
+        guard editingReady else { nudgeLocked(); return }
+        // The helper rejects carriage returns in imported/scheme content.
         let content = normalizeLineEndings(content)
-        let previousLines = lines
-        let previousRaw = rawText
-        writeSeq += 1
-        let gen = writeSeq
-        Task {
-            do {
-                try await HelperGateway.shared.write(content)
-                recordSnapshot(content, label: label)
-                applyWrittenContent(content)
-                showToast(label, .ok)
-                onSuccess?()
-            } catch HostsError.cancelled {
-                if gen == writeSeq { lines = previousLines; rawText = previousRaw }
-            } catch {
-                if gen == writeSeq { lines = previousLines; rawText = previousRaw }
-                helperReady = HelperClient.isReady()
-                showToast(userMessage(error), .error)
-            }
-        }
+        persist(content, label: label, previousLines: lines, reparseOnSuccess: true, onSuccess: onSuccess)
     }
 
     // MARK: Scheme apply
@@ -609,7 +618,12 @@ final class HostsStore: ObservableObject {
     func exitSelect() { selectMode = false; selection.removeAll() }
 
     func lock() { sessionUnlocked = false; selectMode = false; selection.removeAll(); showToast("Locked", .info) }
-    func nudgeLocked() { showToast("Unlock to make changes.", .error) }
+    func nudgeLocked() {
+        let message = isWriting ? "Wait for the current change to finish saving."
+            : !hasLoadedBaseline ? "Couldn't read the hosts file. Reopen Hosts before editing."
+            : "Unlock to make changes."
+        showToast(message, .error)
+    }
     func toggleCollapse(_ g: HostGroup) {
         if collapsed.contains(g.rawValue) { collapsed.remove(g.rawValue) } else { collapsed.insert(g.rawValue) }
     }
@@ -668,31 +682,13 @@ final class HostsStore: ObservableObject {
     // Restore a past snapshot by writing it back through the helper. The revert
     // itself is recorded as a new snapshot, so it can be undone like any change.
     func revert(to snapshot: HostSnapshot) {
-        guard editingReady else {
-            showToast("Unlock to make changes.", .error)
-            return
-        }
+        guard editingReady else { nudgeLocked(); return }
         guard snapshot.content != rawText else {
             showToast("Already at this version", .info)
             return
         }
-        let previousLines = lines
-        let previousRaw = rawText
-        writeSeq += 1
-        let gen = writeSeq
-        Task {
-            do {
-                try await HelperGateway.shared.write(snapshot.content)
-                recordSnapshot(snapshot.content, label: "Reverted to \(Self.shortTime(snapshot.timestamp))")
-                applyWrittenContent(snapshot.content)
-                showToast("Reverted to earlier version", .ok)
-            } catch HostsError.cancelled {
-            } catch {
-                if gen == writeSeq { lines = previousLines; rawText = previousRaw }
-                helperReady = HelperClient.isReady()
-                showToast(userMessage(error), .error)
-            }
-        }
+        persist(snapshot.content, label: "Reverted to \(Self.shortTime(snapshot.timestamp))",
+                previousLines: lines, reparseOnSuccess: true)
     }
 
     static func shortTime(_ date: Date) -> String {

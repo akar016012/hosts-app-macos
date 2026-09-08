@@ -144,7 +144,11 @@ profile or lock menu so the helper receives the fresh public key.
   `Contents/Library/LaunchDaemons`, and signs everything with a real signing
   identity (hardened runtime).
 
-Disabled entries are stored as commented-out lines.
+Disabled entries are stored as commented-out lines. Hosts refreshes external file
+changes when the app becomes active. Every save includes the last loaded file's
+SHA-256 hash; the helper rejects a changed baseline instead of overwriting it.
+On conflict, Hosts reloads the live version into the editor and History. Review
+it and retry your change. Editing pauses while a save is pending.
 
 ## Stored data and config
 
