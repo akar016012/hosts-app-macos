@@ -151,10 +151,10 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .hpSchemes)) { _ in guarded { showingSchemes = true } }
         .onReceive(NotificationCenter.default.publisher(for: .hpFlushDNS)) { _ in store.flushDNS() }
         .onReceive(NotificationCenter.default.publisher(for: .hpManagePIN)) { _ in
-            // Changing an existing PIN requires an unlocked session; a first-time
-            // setup is the bootstrap path and stays open.
-            if store.pinSet && !store.sessionUnlocked { store.nudgeLocked() }
-            else { showPinSetup = true }
+            // Changing an existing PIN, or adding a first one to an established
+            // install, needs proof of ownership first; only genuine first-run
+            // setup and a just-authenticated forgot-PIN reset stay open.
+            if !store.nudgePINSetup() { showPinSetup = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: .hpEditTheme)) { _ in showThemeEditor = true }
         .onReceive(NotificationCenter.default.publisher(for: .hpUnregister)) { _ in store.unregisterHelper() }
@@ -195,9 +195,14 @@ struct ContentView: View {
         }
     }
 
-    // Open PIN entry, or setup if no PIN exists yet.
+    // Open PIN entry, or setup if no PIN exists yet. An established install
+    // that never had a PIN must unlock some other way before adding one, so
+    // fall back to the chooser rather than offer a sheet whose save the store
+    // would refuse.
     private func presentPIN() {
-        if store.pinSet { showPinUnlock = true } else { showPinSetup = true }
+        if store.pinSet { showPinUnlock = true }
+        else if store.nudgePINSetup() { showUnlockChooser = true }
+        else { showPinSetup = true }
     }
 
     // MARK: Header

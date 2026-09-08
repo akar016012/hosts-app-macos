@@ -17,6 +17,10 @@ enum SigningKey {
     // unlock (Touch ID, PIN, or macOS login password) and the key file's 0600
     // owner-only permissions.
 
+    // Cheap existence check (no key parsing) for callers that only need to know
+    // whether this installation has ever completed an unlock.
+    static var exists: Bool { FileManager.default.fileExists(atPath: Helper.privateKeyPath) }
+
     static func existing() -> SecKey? {
         guard let data = FileManager.default.contents(atPath: Helper.privateKeyPath) else { return nil }
         let attrs: [String: Any] = [

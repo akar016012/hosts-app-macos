@@ -39,6 +39,46 @@ enum PinStore {
 
     static var isSet: Bool { FileManager.default.fileExists(atPath: path) }
 
+    // MARK: Setup policy
+
+    // Everything the "may a PIN be saved right now?" decision depends on, as
+    // plain values so the rule is testable without the store or the UI.
+    struct SetupContext {
+        var pinSet: Bool
+        var sessionUnlocked: Bool
+        // The first-run walkthrough has finished at least once. A tour replay
+        // flips it back, which is why this alone never marks a fresh install.
+        var onboardingCompleted: Bool
+        // A session signing key exists, i.e. some unlock (Touch ID, PIN, or the
+        // macOS password) has already succeeded on this installation.
+        var sessionKeyExists: Bool
+        // A forgot-PIN reset backed by macOS authentication is still waiting
+        // for its replacement PIN.
+        var resetAuthorized: Bool
+    }
+
+    // Returns nil when saving a PIN is allowed, otherwise the user-facing reason.
+    //
+    // Changing an existing PIN always needs an unlocked session. Creating the
+    // first PIN is allowed in exactly three situations, each of which already
+    // proves the person at the keyboard owns the installation:
+    //   - the session is unlocked;
+    //   - a forgot-PIN reset just succeeded (macOS authentication);
+    //   - the installation is genuinely fresh — onboarding has never finished
+    //     and no session key exists — so there is no owner credential yet that
+    //     a new PIN could sidestep.
+    // Everything else, notably a locked, established install that never had a
+    // PIN, is refused: otherwise anyone at the unlocked Mac could add a PIN of
+    // their choosing and unlock Hosts with it.
+    static func setupDenialReason(_ c: SetupContext) -> String? {
+        if c.pinSet {
+            return c.sessionUnlocked ? nil : "Unlock to change your PIN."
+        }
+        if c.sessionUnlocked || c.resetAuthorized { return nil }
+        if !c.onboardingCompleted && !c.sessionKeyExists { return nil }
+        return "Unlock with Touch ID or your macOS password to add a PIN."
+    }
+
     // Returns a user-facing reason the PIN is unacceptable, or nil if it's valid.
     static func validate(_ pin: String) -> String? {
         guard pin.count >= minLength, pin.count <= maxLength, pin.allSatisfy(\.isNumber) else {

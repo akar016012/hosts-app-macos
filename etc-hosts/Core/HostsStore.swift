@@ -212,21 +212,62 @@ final class HostsStore: ObservableObject {
 
     // MARK: PIN unlock (alternative to Touch ID)
 
+    // Window after a successful forgot-PIN reset in which a replacement PIN may
+    // be saved without an unlocked session. The reset already proved ownership
+    // through macOS authentication. The window is consumed by the save, dropped
+    // when the setup sheet closes, and expires on its own as a backstop.
+    private var pinResetGrantExpiry: Date?
+    private static let pinResetGrantDuration: TimeInterval = 10 * 60
+
+    private var pinResetAuthorized: Bool {
+        guard let expiry = pinResetGrantExpiry else { return false }
+        return expiry > Date()
+    }
+
+    private var pinSetupContext: PinStore.SetupContext {
+        PinStore.SetupContext(pinSet: pinSet,
+                              sessionUnlocked: sessionUnlocked,
+                              onboardingCompleted: OnboardingStore.shared.completed,
+                              sessionKeyExists: SigningKey.exists,
+                              resetAuthorized: pinResetAuthorized)
+    }
+
+    // Why "Set PIN…" / "Change PIN…" must not be offered right now, or nil when
+    // it may be. See PinStore.setupDenialReason for the rule: an existing PIN
+    // changes only in an unlocked session, and a first PIN is added only in an
+    // unlocked session, during genuine first-run setup, or right after a
+    // macOS-authenticated forgot-PIN reset.
+    var pinSetupDenialReason: String? { PinStore.setupDenialReason(pinSetupContext) }
+    var canManagePIN: Bool { pinSetupDenialReason == nil }
+
+    // Toasts the reason PIN setup is unavailable. Returns true when it did, so
+    // callers can present the setup UI only when the save would be accepted.
+    @discardableResult
+    func nudgePINSetup() -> Bool {
+        guard let reason = pinSetupDenialReason else { return false }
+        showToast(reason, .error)
+        return true
+    }
+
     // Saves a new PIN. Returns a user-facing error message, or nil on success.
-    // Changing an existing PIN requires an unlocked session; setting the first
-    // PIN (or one after a reset) is the bootstrap path and stays open.
+    // Enforces the same rule the UI uses to offer PIN setup, so a stale view or
+    // a direct caller can never bypass it.
     func setPIN(_ pin: String) -> String? {
-        guard !pinSet || sessionUnlocked else { return "Unlock to change your PIN." }
+        if let reason = pinSetupDenialReason { return reason }
         if let reason = PinStore.validate(pin) { return reason }
         do {
             try PinStore.set(pin)
             pinSet = true
+            pinResetGrantExpiry = nil
             showToast("PIN saved", .ok)
             return nil
         } catch {
             return "Couldn't save your PIN. Try again."
         }
     }
+
+    // Ends the forgot-PIN grace window without saving (the setup sheet closed).
+    func discardPINResetGrant() { pinResetGrantExpiry = nil }
 
     func removePIN() {
         guard sessionUnlocked else { nudgeLocked(); return }
@@ -322,6 +363,9 @@ final class HostsStore: ObservableObject {
     private func completePINReset() {
         PinStore.clear()
         pinSet = false
+        // The reset just proved ownership; let the chained setup sheet save the
+        // replacement PIN even though the session is still locked.
+        pinResetGrantExpiry = Date().addingTimeInterval(Self.pinResetGrantDuration)
         showToast("PIN reset — set a new PIN", .info)
     }
 
