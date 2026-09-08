@@ -24,6 +24,10 @@ struct RootView: View {
                 UpdaterManager.shared.probeForUpdate()
                 HostsStore.shared.installActivityMonitor()
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                guard didRunInitialSetup else { return }
+                HostsStore.shared.refreshFromDisk()
+            }
             // Auto-unlock only once onboarding is done — this fires with the
             // current value on first subscribe (covering returning users) and
             // again when the walkthrough finishes, so the launch Touch ID prompt

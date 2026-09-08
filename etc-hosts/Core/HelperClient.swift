@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Aditya Kar
 
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -12,8 +13,8 @@ import Foundation
 // order or tear a backup) and keeps the blocking IO off the UI thread.
 actor HelperGateway {
     static let shared = HelperGateway()
-    func write(_ content: String) throws {
-        try HelperClient.write(content: content)
+    func write(_ content: String, expectedContent: String) throws {
+        try HelperClient.write(content: content, expectedContent: expectedContent)
     }
 }
 
@@ -164,15 +165,16 @@ enum HelperClient {
 
     // Sends a session-signed write request to the daemon. Touch ID unlocks the
     // app session; the helper validates this app's enrolled public key.
-    static func write(content: String) throws {
+    static func write(content: String, expectedContent: String) throws {
         let ts = Int(Date().timeIntervalSince1970)
         let nonce = UUID().uuidString
         let contentB64 = Data(content.utf8).base64EncodedString()
-        let msg = Data("hostshelper-v1\n\(ts)\n\(nonce)\n\(contentB64)".utf8)
+        let expectedHash = SHA256.hash(data: Data(expectedContent.utf8)).map { String(format: "%02x", $0) }.joined()
+        let msg = Data("hostshelper-v2\n\(ts)\n\(nonce)\n\(expectedHash)\n\(contentB64)".utf8)
         let sig = try SigningKey.sign(msg).base64EncodedString()
 
         let request: [String: Any] = ["cmd": "write", "protocol": Helper.protocolVersion,
-                                      "ts": ts, "nonce": nonce, "content": contentB64, "sig": sig]
+                                      "ts": ts, "nonce": nonce, "content": contentB64, "expectedHash": expectedHash, "sig": sig]
         try send(request, failureMessage: "Couldn't save your changes. Try again.")
     }
 
@@ -209,6 +211,7 @@ enum HelperClient {
             throw HostsError.failed("The Hosts helper isn't responding. Lock Hosts, then unlock again.")
         }
         if !ok {
+            if obj["code"] as? String == "file_conflict" { throw HostsError.fileConflict }
             throw HostsError.failed(friendlyError(code: obj["code"] as? String, fallback: failureMessage))
         }
     }

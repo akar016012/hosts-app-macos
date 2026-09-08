@@ -28,9 +28,17 @@ The helper does not trust the app because of who is talking to it; it trusts a
 **cryptographic signature**.
 
 - **Signed write requests.** Each write is an ECDSA P-256 (X9.62 / SHA-256)
-  signature over a canonical message: `hostshelper-v1\n<ts>\n<nonce>\n<contentBase64>`.
+  signature over a canonical message: `hostshelper-v2\n<ts>\n<nonce>\n<expectedHash>\n<contentBase64>`.
   The signing private key never leaves the app; the helper only ever sees the
   public key and signatures.
+- **External-change precondition.** Protocol v2 requires `expectedHash`, a
+  lowercase SHA-256 hex digest of the app's last confirmed file bytes, covered by
+  the signature. The helper compares it before backup and again immediately
+  before replacement; mismatches return `file_conflict`. Missing/older write
+  protocol versions are rejected. This closes the app-refresh-to-helper-write
+  race, but filesystem reads and rename are separate operations: an unrelated
+  privileged writer that changes the file between the final check and rename
+  cannot be excluded without cooperation from that writer.
 - **Trust on first use (TOFU) enrollment.** With `SMAppService` there is no root
   install script to plant the trusted key. Instead the helper accepts a single
   `enroll` message from an authorized peer and records the app's public key

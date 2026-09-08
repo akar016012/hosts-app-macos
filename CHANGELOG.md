@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **External hosts-file edits are detected before saving.** Hosts refreshes when
+  activated, and the helper checks a signed baseline hash before replacing the
+  file. Conflicts reload the live file into the editor and History for review.
+  Editing pauses during a save so pending edits cannot use a stale baseline.
+  This requires the updated protocol-v2 app and bundled helper together.
+
 - **Changing your PIN no longer carries over the old PIN's lockout.** After
   too many wrong PIN attempts, unlocking with Touch ID or the macOS password
   and then choosing a new PIN left the old lockout timer in place, so the new
