@@ -14,7 +14,8 @@ enum SigningKey {
     // signature; for an ad-hoc-signed app that identity changes on every rebuild,
     // so macOS prompts for the keychain password on every signature. A file-based
     // key has no ACL and never prompts. Editing is gated by the per-session
-    // Touch ID unlock and the key file's 0600 owner-only permissions.
+    // unlock (Touch ID, PIN, or macOS login password) and the key file's 0600
+    // owner-only permissions.
 
     static func existing() -> SecKey? {
         guard let data = FileManager.default.contents(atPath: Helper.privateKeyPath) else { return nil }
@@ -101,10 +102,16 @@ enum SigningKey {
         }
     }
 
+    // Creates the session signing key on first use. Deliberately does NOT gate on
+    // Touch ID: every caller reaches this only after the user has already proven
+    // ownership through whichever unlock method they chose (Touch ID, PIN, or the
+    // macOS login password), and the key itself is a plain 0600 file with no
+    // biometric ACL. A Touch ID check here was a holdover from the old
+    // keychain-backed key and made the first PIN/password unlock fail on Macs
+    // without Touch ID (Mac mini, Mac Studio, external displays) — see issue #41.
     @discardableResult
     static func getOrCreate() throws -> SecKey {
         if let k = existing() { return k }
-        try ensureTouchIDAvailable()
         let attrs: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits as String: 256,
